@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- MLAstroRPA+TPPA icon - 3 solid black stars (★) + RPA wordmark.
+     Each star is a simple <text>★</text> so you can tweak x / y / font-size easily.
+     Tips:
+       - x,y = centre of the star glyph (text-anchor:middle + dominant-baseline:central)
+       - font-size ~ controls star size; width of glyph ≈ 0.83 * font-size
+       - To convert to the NINA dockable icon run tools\mlastro-iconbuild -->
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   width="240"
+   height="240"
+   viewBox="-26 -5 240 240"
+   version="1.1"
+   id="svg8">
+  <g
+     id="layer1">
+    <!-- Star 1 : left of arc  (centre ~56, 84 ; big) -->
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:98px;line-height:1.2;font-family:Arial, Helvetica, sans-serif;fill:#000000;stroke:none;text-anchor:middle;dominant-baseline:central"
+       x="56"
+       y="84"
+       id="star-1">★</text>
+
+    <!-- Star 2 : right of arc  (centre ~184, 84 ; big) -->
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:98px;line-height:1.2;font-family:Arial, Helvetica, sans-serif;fill:#000000;stroke:none;text-anchor:middle;dominant-baseline:central"
+       x="184"
+       y="84"
+       id="star-2">★</text>
+
+    <!-- Star 3 : top-centre of arc  (centre ~120, 52 ; medium-high) -->
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:86px;line-height:1.2;font-family:Arial, Helvetica, sans-serif;fill:#000000;stroke:none;text-anchor:middle;dominant-baseline:central"
+       x="120"
+       y="52"
+       id="star-3">★</text>
+
+    <!-- Wordmark : RPA (centred below the arc) -->
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:82px;line-height:1.1;font-family:Arial, Helvetica, sans-serif;fill:#000000;fill-opacity:1;stroke:none;text-anchor:middle;dominant-baseline:central"
+       x="120"
+       y="193"
+       id="rpa-text">RPA</text>
+  </g>
+</svg>

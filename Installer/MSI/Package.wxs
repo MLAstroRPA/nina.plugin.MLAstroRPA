@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  MLAstroRPA+TPPA - N.I.N.A Plugin (merged single plugin)
+  WiX v6 Installer Package
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!-- Define variables -->
+  <?define ProductName = "MLAstroRPA" ?>
+  <?define ProductVersion = "2.2.1.0" ?>
+  <?define Manufacturer = "MLAstro" ?>
+  <?define UpgradeCode = "E6F4D2B0-1A3C-4E5F-9B7A-8C0D1E2F3A4B" ?>
+  <?define PluginFolderName = "MLAstroRPA" ?>
+  <?define NINAVersion = "3.0.0" ?>
+
+  <!-- Package definition -->
+  <Package Name="$(var.ProductName)"
+           Manufacturer="$(var.Manufacturer)"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="$(var.UpgradeCode)"
+           Scope="perUser"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <SummaryInformation Description="$(var.ProductName) plugin for N.I.N.A. astrophotography software" />
+
+    <!-- Upgrade handling - remove older versions -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  AllowSameVersionUpgrades="yes" />
+
+    <!-- Embed CAB for single MSI file -->
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- ========== CHECK IF NINA IS INSTALLED ========== -->
+
+    <!-- NOTE: NINA presence is determined ONLY by the NINA.exe file. Do NOT use the
+         %LocalAppData%\NINA\Plugins folder as evidence - it is left behind after
+         NINA is uninstalled and would let the plugin install on a NINA-less machine. -->
+
+    <!-- Check for NINA.exe in Program Files (default N.I.N.A. install folder includes the full product name) -->
+    <Property Id="NINAEXE_PROGRAMFILES">
+      <DirectorySearch Id="NINAProgramFilesSearch" Path="[ProgramFiles64Folder]N.I.N.A. - Nighttime Imaging 'N' Astronomy">
+        <FileSearch Name="NINA.exe" />
+      </DirectorySearch>
+    </Property>
+
+    <!-- Fallback: NINA.exe in Program Files under the short folder name -->
+    <Property Id="NINAEXE_PROGRAMFILES_SHORT">
+      <DirectorySearch Id="NINAProgramFilesShortSearch" Path="[ProgramFiles64Folder]N.I.N.A">
+        <FileSearch Name="NINA.exe" />
+      </DirectorySearch>
+    </Property>
+
+    <!-- Fallback: NINA.exe in the per-user Squirrel install folder -->
+    <Property Id="NINAEXE_LOCALAPPDATA">
+      <DirectorySearch Id="NINALocalAppDataSearch" Path="[LocalAppDataFolder]Programs\N.I.N.A">
+        <FileSearch Name="NINA.exe" />
+      </DirectorySearch>
+    </Property>
+
+    <!-- Set to 1 when the user clicks "Continue" in the N.I.N.A.-missing dialog to install anyway -->
+    <Property Id="SKIPNINACHECK" Value="0" />
+
+    <!-- Launch condition: NINA must be installed (unless the user chose Continue) -->
+    <Launch Condition="NINAEXE_PROGRAMFILES OR NINAEXE_PROGRAMFILES_SHORT OR NINAEXE_LOCALAPPDATA OR Installed OR SKIPNINACHECK"
+            Message="N.I.N.A. (Nighttime Imaging 'N' Astronomy) version 3.0 or later is required to install this plugin.&#13;&#10;&#13;&#10;Please download N.I.N.A. from:&#13;&#10;https://nighttime-imaging.eu/download/&#13;&#10;&#13;&#10;After installing N.I.N.A., run this installer again." />
+
+    <!-- ========== CHECK IF NINA IS RUNNING ========== -->
+
+    <!-- CloseApplication will detect if NINA is running and prompt the user -->
+    <util:CloseApplication Id="CloseNINAPrompt"
+                           Target="NINA.exe"
+                           RebootPrompt="no"
+                           CloseMessage="no"
+                           PromptToContinue="yes"
+                           Description="N.I.N.A. is currently running and must be closed before installation can continue.&#13;&#10;&#13;&#10;Please save your work and close N.I.N.A., then click 'Retry' to continue installation.&#13;&#10;&#13;&#10;Click 'Ignore' to attempt to close N.I.N.A. automatically (not recommended if imaging session is active)." />
+
+    <!-- Open the N.I.N.A. download page in the default browser (ShellExecute via the WixShellExec custom action) -->
+    <Property Id="WixShellExecTarget" Value="https://nighttime-imaging.eu/download/" />
+    <CustomAction Id="LaunchNinaDownload" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
+
+    <!-- Single feature - the merged plugin (installed by default) -->
+    <Feature Id="MainPluginFeature" Title="$(var.ProductName)"
+             Description="MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware: CONTROL / CONNECTION / CONFIGURATION options tabs and the MLAstro docking panel."
+             Level="1">
+      <ComponentGroupRef Id="PluginFiles" />
+      <ComponentRef Id="CreatePluginFolder" />
+    </Feature>
+
+    <!-- WixUI_Minimal: standard Welcome/License/Verify/Progress/Exit flow.
+         Single feature installs to a fixed folder - no feature/destination pages are needed. -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- Custom completion message -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
+              Value="Installation complete!&#13;&#10;&#13;&#10;Start N.I.N.A. to use the MLAstroRPA+TPPA plugin.&#13;&#10;The control panel will appear in the 'Docking' menu." />
+
+    <!-- Custom dialog shown when N.I.N.A. is not installed - has a Download button that opens the N.I.N.A. page -->
+    <UI Id="NinaCheckUI">
+      <Dialog Id="NinaMissingDlg" Width="370" Height="200" Title="N.I.N.A. not found">
+        <Control Id="Title" Type="Text" X="15" Y="15" Width="340" Height="20" TabSkip="yes" Text="{\WixUI_Font_Title}N.I.N.A. is required" />
+        <Control Id="Description" Type="Text" X="15" Y="45" Width="340" Height="60" TabSkip="yes" Text="MLAstroRPA+TPPA requires N.I.N.A. version 3.0 or later.&#10;&#10;Click the button below to open the N.I.N.A. download page, then run this installer again." />
+        <Control Id="DownloadButton" Type="PushButton" X="15" Y="115" Width="180" Height="22" Text="Download N.I.N.A.">
+          <Publish Event="DoAction" Value="LaunchNinaDownload" Condition="1" />
+        </Control>
+        <Control Id="UrlText" Type="Text" X="15" Y="142" Width="340" Height="17" TabSkip="yes" Text="https://nighttime-imaging.eu/download/" />
+        <Control Id="Continue" Type="PushButton" X="200" Y="173" Width="90" Height="17" Text="Continue">
+          <Publish Property="SKIPNINACHECK" Value="1" Order="1" Condition="1" />
+          <Publish Event="EndDialog" Value="Return" Order="2" Condition="1" />
+        </Control>
+        <Control Id="Exit" Type="PushButton" X="300" Y="173" Width="56" Height="17" Default="yes" Text="Exit">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+    </UI>
+
+    <!-- Show the N.I.N.A.-missing warning before the standard wizard (fresh install). -->
+    <InstallUISequence>
+      <Show Dialog="NinaMissingDlg" After="AppSearch"
+            Condition="NOT Installed AND NOT (NINAEXE_PROGRAMFILES OR NINAEXE_PROGRAMFILES_SHORT OR NINAEXE_LOCALAPPDATA)" />
+    </InstallUISequence>
+
+  </Package>
+
+  <!-- Directory structure: LocalAppData\NINA\Plugins\3.0.0\MLAstroRPA-TPPA -->
+  <Fragment>
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="NINADir" Name="NINA">
+        <Directory Id="PluginsDir" Name="Plugins">
+          <Directory Id="INSTALLDIR" Name="$(var.NINAVersion)">
+            <Directory Id="INSTALLFOLDER" Name="$(var.PluginFolderName)" />
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+  </Fragment>
+
+  <!-- Component to create and remove the plugin folder -->
+  <Fragment>
+    <Component Id="CreatePluginFolder" Directory="INSTALLFOLDER" Guid="F6A7B8C9-D0E1-2345-F012-456789ABCDEF">
+      <CreateFolder />
+      <RemoveFolder Id="RemovePluginFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      <RemoveFolder Id="RemoveVersionDir" Directory="INSTALLDIR" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\MLAstro\MLAstroRPA"
+                     Name="Installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\MLAstro\MLAstroRPA"
+                     Name="InstallPath"
+                     Type="string"
+                     Value="[INSTALLFOLDER]" />
+    </Component>
+  </Fragment>
+
+  <!-- Plugin file component group - the plugin DLL -->
+  <Fragment>
+    <ComponentGroup Id="PluginFiles" Directory="INSTALLFOLDER">
+      <Component Id="MainPluginDLL" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+        <File Id="PluginDLL"
+              Source="Plugin\MLAstroRPA\NINA.Plugins.MLAstroRPA.dll" />
+        <RegistryValue Root="HKCU" Key="Software\MLAstro\MLAstroRPA"
+                       Name="MainDLL" Type="string" Value="[INSTALLFOLDER]NINA.Plugins.MLAstroRPA.dll"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>

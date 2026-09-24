@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Temporary vector icon (replace DrawingGroup with converted XAML from your SVG files) -->
+  <DrawingImage x:Key="MLAstroRpaIcon">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+        <!-- Simple placeholder: blue circle. Replace this with the SVG->XAML drawing for correct icon -->
+        <GeometryDrawing Brush="#FF2B7AE4">
+          <GeometryDrawing.Geometry>
+            <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8" />
+          </GeometryDrawing.Geometry>
+        </GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+</ResourceDictionary>

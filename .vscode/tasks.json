@@ -1,0 +1,59 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "dotnet: build",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"${workspaceFolder}/MLAstroRPA.csproj",
+				"-c",
+				"Release",
+				"-tl:off"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"type": "shell",
+			"label": ".NET Build MSI",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/Installer/MSI/Release-MSI.ps1"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"type": "shell",
+			"label": "GIT: Release Repo",
+			"detail": "No MSI build. Confirms the new MSI was already built (.NET Build MSI), then lets you pick a release-notes file (UP/DOWN + ENTER, ESC = default) from Installer/MSI/ReleaseNotes, creates a GitHub release from the newest MSI in Output and uploads Installer/MSI/Plugin files.",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}/Installer/MSI/Release-MSI.ps1",
+				"-CreateRelease",
+				"-ReleaseOnly"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}

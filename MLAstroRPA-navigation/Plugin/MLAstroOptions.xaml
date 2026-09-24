@@ -1,0 +1,641 @@
+﻿<ResourceDictionary x:Class="MLAstro_Robotic_Polar_Alignment.Plugin.MLAstroOptions"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:view="clr-namespace:MLAstro_Robotic_Polar_Alignment.Dockables">
+    <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+
+        <!-- CONTROL tab body (hosted with DataContext = MLAstroController) -->
+    <DataTemplate x:Key="MlaControlBody">
+        <view:PolarAlignmentDockable DataContext="{Binding PolarAlignmentVM}" />
+    </DataTemplate>
+
+    <!-- CONNECTION tab body (hosted with DataContext = MLAstroController) -->
+    <DataTemplate x:Key="MlaConnectionBody">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              Loaded="OnOptionsScrollViewerLoaded"
+                              PreviewMouseWheel="OnScrollViewerPreviewMouseWheel">
+                    <StackPanel Margin="10">
+                    <Grid>
+                    <StackPanel Margin="10">                        <!-- Kiểu kết nối: CHỈ chọn 1 trong 2 (Serial hoặc Wireless). -->
+                        <StackPanel Margin="0,0,0,10" HorizontalAlignment="Left">
+                            <TextBlock Text="Connection type" Margin="0,0,0,5" />
+                            <StackPanel Orientation="Horizontal">
+                                <ComboBox Width="220" SelectedIndex="{Binding TransportModeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Serial connection" />
+                                    <ComboBoxItem Content="Wireless connection" />
+                                </ComboBox>
+                                <!-- Cảnh báo: đổi Connection type sẽ ngắt phiên đang mở (chỉ 1 transport giữ quyền). -->
+                                <TextBlock
+                                    Margin="10,0,0,0"
+                                    MaxWidth="430"
+                                    VerticalAlignment="Center"
+                                    Foreground="Orange"
+                                    TextWrapping="Wrap"
+                                    Text="⚠️ Switch connection will disconnect the current session."
+                                    ToolTip="Switching Serial ↔ Wireless always disconnects the transport in use, then connects the newly selected one." />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== SERIAL SETTINGS (ẩn hoàn toàn khi chọn Wireless connection) ===== -->
+                        <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource BoolToVisConverter}}">                        <WrapPanel Margin="0,0,0,10">
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="COM Port" Margin="0,0,0,5" />
+                                <ComboBox ItemsSource="{Binding AvailableComPortItems}"
+                                          DisplayMemberPath="DisplayName"
+                                          SelectedValuePath="PortName"
+                                          SelectedValue="{Binding Settings.ComPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          DropDownOpened="OnComPortDropDownOpened" />
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <Button Content="{Binding SerialConnectButtonText}" Width="110" Margin="0,0,10,0" Command="{Binding ToggleSerialConnectionCommand}" />
+                            <Button Content="Reset ESP32" Width="110" Margin="0,0,10,0" Command="{Binding ResetEsp32Command}" />
+                            <TextBlock Text="{Binding AutoReconnectStatus}"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       FontWeight="SemiBold"
+                                       Foreground="Blue" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding SerialConnectionStatus}"
+                                   TextWrapping="Wrap"
+                                   Foreground="Gray"
+                                   FontSize="11"
+                                   Margin="0,0,0,4" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Handshake: "
+                                       Foreground="Gray"
+                                       FontSize="11" />
+                            <TextBlock Text="{Binding SerialHandshakeStatus}"
+                                       Foreground="Gray"
+                                       FontSize="11" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <!-- Khoá nút gạt khi TPPA đang mượn cổng (external control): lúc đó poll '?' auto-pause,
+                                 không cho user tự bật/tắt giữa phiên TPPA điều khiển. Mở lại khi TPPA trả quyền. -->
+                            <CheckBox IsChecked="{Binding IsPauseQuery, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsExternalUnlocked}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0" />
+                            <TextBlock Text="Pause polling '?'"
+                                       VerticalAlignment="Center"
+                                       FontSize="12" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Handshake Timeout:"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"
+                                       FontSize="12" />
+                            <TextBox Text="{Binding HandshakeTimeoutMilliseconds, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                     Width="70"
+                                     MaxLength="4"
+                                     VerticalAlignment="Center"
+                                     PreviewTextInput="OnNumericOnlyPreviewTextInput"
+                                     KeyDown="OnTimingTextBoxKeyDown" />
+                            <TextBlock Text="ms (300 - 5000)"
+                                       VerticalAlignment="Center"
+                                       Foreground="Gray"
+                                       FontSize="11"
+                                       Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Polling Period:"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"
+                                       FontSize="12" />
+                            <TextBox Text="{Binding PollingIntervalMilliseconds, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                     Width="70"
+                                     MaxLength="4"
+                                     VerticalAlignment="Center"
+                                     PreviewTextInput="OnNumericOnlyPreviewTextInput"
+                                     KeyDown="OnTimingTextBoxKeyDown" />
+                            <TextBlock Text="ms (100 - 1000)"
+                                       VerticalAlignment="Center"
+                                       Foreground="Gray"
+                                       FontSize="11"
+                                       Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        </StackPanel>
+
+                        <!-- ===== WIRELESS SETTINGS (WebSocket qua mDNS/IP) ===== -->
+                        <StackPanel Visibility="{Binding IsWirelessSettingsVisible, Converter={StaticResource BoolToVisConverter}}">
+                            <StackPanel Width="320" Margin="0,0,0,10" HorizontalAlignment="Left">
+                                <TextBlock Text="Address:" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.MlaHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="hostname (MLAstroRPA.local) or device IP"
+                                           Foreground="Gray"
+                                           FontSize="11"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <Button Content="{Binding SerialConnectButtonText}"
+                                        Width="110"
+                                        Margin="0,0,10,0"
+                                        Command="{Binding ToggleSerialConnectionCommand}" />
+                                <Button Content="Reset ESP32"
+                                        Width="110"
+                                        Margin="0,0,10,0"
+                                        Command="{Binding ResetEsp32Command}" />
+                                <TextBlock Text="{Binding AutoReconnectStatus}"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           Foreground="Blue" />
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding SerialConnectionStatus}"
+                                       TextWrapping="Wrap"
+                                       Foreground="Gray"
+                                       FontSize="11"
+                                       Margin="0,0,0,4" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="Handshake: "
+                                           Foreground="Gray"
+                                           FontSize="11" />
+                                <TextBlock Text="{Binding SerialHandshakeStatus}"
+                                           Foreground="Gray"
+                                           FontSize="11" />
+                            </StackPanel>
+
+                            <TextBlock Text="System log:" Margin="0,0,0,5" />
+
+                            <!-- Nút giống Web UI: RESET ERROR / Export CSV / Clear -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <Button Content="⚠ RESET ERROR"
+                                        Width="120"
+                                        Margin="0,0,10,0"
+                                        Command="{Binding ResetErrorCommand}" />
+                                <Button Content="Export CSV"
+                                        Width="100"
+                                        Margin="0,0,10,0"
+                                        Command="{Binding ExportSystemLogCommand}" />
+                                <Button Content="Clear"
+                                        Width="80"
+                                        Command="{Binding ClearSystemLogCommand}" />
+                            </StackPanel>
+
+                            <!-- Bảng log giống Web UI: [thời gian] nội dung, tô màu theo mức độ,
+                                 dòng mới nhất lên trên, tối đa 50 dòng. Nền theo theme NINA
+                                 (không tint nền), cho phép bôi chọn + Copy qua context menu. -->
+                            <RichTextBox Height="180"
+                                         MinHeight="180"
+                                         IsReadOnly="True"
+                                         IsReadOnlyCaretVisible="True"
+                                         Background="Transparent"
+                                         FontFamily="Consolas"
+                                         VerticalScrollBarVisibility="Auto"
+                                         PreviewMouseWheel="OnSerialTerminalPreviewMouseWheel"
+                                         Loaded="OnSystemLogLoaded">
+                                <RichTextBox.ContextMenu>
+                                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                                 Background="White"
+                                                 Foreground="White">
+                                        <MenuItem Header="Copy" Click="OnSerialTerminalCopyClick" />
+                                        <MenuItem Header="Clear" Command="{Binding ClearSystemLogCommand}" />
+                                    </ContextMenu>
+                                </RichTextBox.ContextMenu>
+                            </RichTextBox>
+
+                            <Thumb Height="8"
+                                   Margin="0,0,0,10"
+                                   HorizontalAlignment="Stretch"
+                                   Cursor="SizeNS"
+                                   Background="Transparent"
+                                   DragDelta="OnSerialTerminalResizeThumbDragDelta" />
+                        </StackPanel>
+
+                        <!-- ===== SERIAL TERMINAL (chỉ hiện khi chọn Serial connection) ===== -->
+                        <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource BoolToVisConverter}}">
+                            <TextBlock Text="Serial Terminal" Margin="0,0,0,5" />
+                        <RichTextBox Height="180"
+                                     MinHeight="180"
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="True"
+                                     Background="Transparent"
+                                     FontFamily="Consolas"
+                                     VerticalScrollBarVisibility="Auto"
+                                     PreviewMouseWheel="OnSerialTerminalPreviewMouseWheel"
+                                     PreviewKeyDown="OnSerialTerminalPreviewKeyDown"
+                                     Loaded="OnSerialTerminalLoaded">
+                            <RichTextBox.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                             Background="White"
+                                             Foreground="White">
+                                    <MenuItem Header="Copy" Click="OnSerialTerminalCopyClick" />
+                                    <MenuItem Header="Clear" Command="{Binding ClearSerialTerminalCommand}" />
+                                    <MenuItem Header="Hex display"
+                                              IsCheckable="True"
+                                              IsChecked="{Binding IsHexDisplay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </ContextMenu>
+                            </RichTextBox.ContextMenu>
+                        </RichTextBox>
+
+                        <Thumb Height="8"
+                               Margin="0,0,0,10"
+                               HorizontalAlignment="Stretch"
+                               Cursor="SizeNS"
+                               Background="Transparent"
+                               DragDelta="OnSerialTerminalResizeThumbDragDelta" />
+                        </StackPanel>
+
+                        <DockPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource BoolToVisConverter}}">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                <CheckBox IsChecked="{Binding IsHexInputEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,5,0" />
+                                <TextBlock Text="Hex"
+                                           VerticalAlignment="Center"
+                                           FontSize="14"
+                                           Margin="0,0,10,0" />
+                                <Button Content="Send"
+                                        Width="90"
+                                        Command="{Binding SendSerialCommand}" />
+                            </StackPanel>
+                            <TextBox Text="{Binding SerialTerminalInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="{Binding SerialInputMaxLength}"
+                                     TextChanged="OnSerialTerminalInputTextChanged"
+                                     PreviewKeyDown="OnSerialTerminalInputPreviewKeyDown" />
+                        </DockPanel>
+                    </StackPanel>
+                    </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+    </DataTemplate>
+
+    <!-- CONFIGURATION tab body (hosted with DataContext = MLAstroController) -->
+    <DataTemplate x:Key="MlaConfigurationBody">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      Loaded="OnOptionsScrollViewerLoaded"
+                      PreviewMouseWheel="OnScrollViewerPreviewMouseWheel">
+                    <StackPanel Margin="10">
+                <TextBlock Text="⚠️ Not connected&#10;&#10;Open the CONNECTION tab and connect to the MLAstro RPA hardware (Serial or Wireless) to configure device settings."
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           FontSize="14"
+                           Foreground="#F39C12"
+                           Margin="0,20,0,20">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding PolarAlignmentVM.ControlsVisibility}" Value="Collapsed">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <Expander Header="Soft Limits (Degrees)" Margin="0,0,0,15" IsExpanded="True"
+                          Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource BoolToVisConverter}}">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="AZ Limits" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <WrapPanel Margin="0,0,0,10">
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="AZ Min" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.LimitAzMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="AZ Max" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.LimitAzMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </WrapPanel>
+                        <TextBlock Text="ALT Limits" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <WrapPanel>
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="ALT Min" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.LimitAltMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="ALT Max" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.LimitAltMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </WrapPanel>
+                    </StackPanel>
+                </Expander>
+
+                <Expander Header="Motor Driver (TMC2209)" Margin="0,0,0,15" IsExpanded="True"
+                          Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource BoolToVisConverter}}">
+                    <StackPanel Margin="10">
+                        <GroupBox Header="AZ Motor" Margin="0,0,0,10">
+                            <StackPanel Margin="10">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <CheckBox IsChecked="{Binding Settings.AzReverse, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0" />
+                                    <TextBlock Text="Reverse Direction"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                </StackPanel>
+                                <WrapPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Run Current (mA)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzCurrentRun, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Hold Current (mA)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzCurrentHold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Start-up Booster (%)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzBooster, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Soft CoolStep (%)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzCoolStep, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Microsteps" Margin="0,0,0,5" />
+                                        <ComboBox SelectedValue="{Binding Settings.AzMicrosteps, Mode=TwoWay}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="1" Tag="1" />
+                                            <ComboBoxItem Content="2" Tag="2" />
+                                            <ComboBoxItem Content="4" Tag="4" />
+                                            <ComboBoxItem Content="8" Tag="8" />
+                                            <ComboBoxItem Content="16" Tag="16" />
+                                            <ComboBoxItem Content="32" Tag="32" />
+                                            <ComboBoxItem Content="64" Tag="64" />
+                                            <ComboBoxItem Content="128" Tag="128" />
+                                            <ComboBoxItem Content="256" Tag="256" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Accel (steps/sÂ²)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzAccel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Decel (steps/sÂ²)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzDecel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Steps/Degree" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AzStepsPerDegree, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Mode" Margin="0,0,0,5" />
+                                        <ComboBox SelectedValue="{Binding Settings.AzMode, Mode=TwoWay}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="StealthChop" Tag="0" />
+                                            <ComboBoxItem Content="SpreadCycle" Tag="1" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </WrapPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="ALT Motor">
+                            <StackPanel Margin="10">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <CheckBox IsChecked="{Binding Settings.AltReverse, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0" />
+                                    <TextBlock Text="Reverse Direction"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                </StackPanel>
+                                <WrapPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Run Current (mA)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltCurrentRun, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Hold Current (mA)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltCurrentHold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Start-up Booster (%)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltBooster, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Soft CoolStep (%)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltCoolStep, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Microsteps" Margin="0,0,0,5" />
+                                        <ComboBox SelectedValue="{Binding Settings.AltMicrosteps, Mode=TwoWay}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="1" Tag="1" />
+                                            <ComboBoxItem Content="2" Tag="2" />
+                                            <ComboBoxItem Content="4" Tag="4" />
+                                            <ComboBoxItem Content="8" Tag="8" />
+                                            <ComboBoxItem Content="16" Tag="16" />
+                                            <ComboBoxItem Content="32" Tag="32" />
+                                            <ComboBoxItem Content="64" Tag="64" />
+                                            <ComboBoxItem Content="128" Tag="128" />
+                                            <ComboBoxItem Content="256" Tag="256" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Accel (steps/sÂ²)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltAccel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Decel (steps/sÂ²)" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltDecel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Steps/Degree" Margin="0,0,0,5" />
+                                        <TextBox Text="{Binding Settings.AltStepsPerDegree, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Width="220" Margin="0,0,10,10">
+                                        <TextBlock Text="Mode" Margin="0,0,0,5" />
+                                        <ComboBox SelectedValue="{Binding Settings.AltMode, Mode=TwoWay}"
+                                                  SelectedValuePath="Tag">
+                                            <ComboBoxItem Content="StealthChop" Tag="0" />
+                                            <ComboBoxItem Content="SpreadCycle" Tag="1" />
+                                        </ComboBox>
+                                    </StackPanel>
+                                </WrapPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Expander>
+
+                <Expander Header="Backlash &amp; P.A Overshoot" Margin="0,0,0,15" IsExpanded="True"
+                          Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource BoolToVisConverter}}">
+                    <StackPanel Margin="10">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <CheckBox IsChecked="{Binding Settings.BacklashEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0" />
+                            <TextBlock Text="Enable Anti Backlash on firmware"
+                                       VerticalAlignment="Center"
+                                       FontSize="14" />
+                        </StackPanel>
+                        <WrapPanel Margin="24,0,0,10">
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="AZ Backlash (steps)" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.BacklashAz, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,10,10">
+                                <TextBlock Text="ALT Backlash (steps)" Margin="0,0,0,5" />
+                                <TextBox Text="{Binding Settings.BacklashAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </WrapPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,10">
+                            <CheckBox IsChecked="{Binding Settings.OvershootEnabled, Mode=TwoWay}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0" />
+                            <TextBlock Text="Enable Alt P.A Overshoot on firmware"
+                                       VerticalAlignment="Center"
+                                       FontSize="14" />
+                        </StackPanel>
+                        <StackPanel Margin="24,0,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <CheckBox IsChecked="{Binding Settings.OvershootMoveUp, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,8,0" />
+                                <TextBlock Text="Move up overshoot"
+                                           VerticalAlignment="Center"
+                                           FontSize="12" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <CheckBox IsChecked="{Binding Settings.OvershootMoveDown, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,8,0" />
+                                <TextBlock Text="Move down overshoot"
+                                           VerticalAlignment="Center"
+                                           FontSize="12" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,0,10">
+                                <TextBlock Text="Overshoot Amount:" Margin="0,0,0,5" />
+                                <WrapPanel>
+                                    <DockPanel Width="70" Margin="0,0,10,0">
+                                        <TextBlock DockPanel.Dock="Right" Text="°" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
+                                        <TextBox Text="{Binding Settings.OvershootDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DockPanel>
+                                    <DockPanel Width="70" Margin="0,0,10,0">
+                                        <TextBlock DockPanel.Dock="Right" Text="'" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
+                                        <TextBox Text="{Binding Settings.OvershootMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DockPanel>
+                                    <DockPanel Width="70" Margin="0,0,10,0">
+                                        <TextBlock DockPanel.Dock="Right" Text="&quot;" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
+                                        <TextBox Text="{Binding Settings.OvershootSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DockPanel>
+                                </WrapPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
+
+                <Expander Header="WiFi Configuration" Margin="0,0,0,15" IsExpanded="True"
+                          Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource BoolToVisConverter}}">
+                    <StackPanel Margin="10">
+                        <GroupBox Header="Access Point (Hotspot)" Margin="0,0,0,10">
+                            <WrapPanel Margin="10">
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="AP SSID" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.ApSsid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="AP Password" Margin="0,0,0,5" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Width="30"
+                                                Content="👁"
+                                                FontSize="14"
+                                                ToolTip="Show/Hide AP password"
+                                                Command="{Binding ToggleShowApPasswordCommand}" />
+                                        <TextBox Text="{Binding ApPassDisplay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                    <Setter Property="IsReadOnly" Value="True" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ShowApPassword}" Value="True">
+                                                            <Setter Property="IsReadOnly" Value="False" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="AP IP Address" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.ApIp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="Subnet Mask" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.ApSubnet, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </WrapPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Station Mode (Connect to Router)">
+                            <WrapPanel Margin="10">
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="WiFi SSID" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.WifiSsid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="WiFi Password" Margin="0,0,0,5" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Width="30"
+                                                Content="👁"
+                                                FontSize="14"
+                                                ToolTip="Show/Hide WiFi password"
+                                                Command="{Binding ToggleShowStaPasswordCommand}" />
+                                        <TextBox Text="{Binding WifiPassDisplay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                    <Setter Property="IsReadOnly" Value="True" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ShowStaPassword}" Value="True">
+                                                            <Setter Property="IsReadOnly" Value="False" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+                                    </DockPanel>
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="Current STA Mode IP" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.WifiIp, Mode=TwoWay}"
+                                             IsReadOnly="True"
+                                             ToolTip="Lấy từ telemetry (STAi). Trống = chưa có IP từ router." />
+                                </StackPanel>
+                            </WrapPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Expander>
+
+                <!-- Configuration Management -->
+                <Border Padding="10" Margin="0,0,0,15" CornerRadius="5"
+                        Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource BoolToVisConverter}}">
+                    <StackPanel>
+                        <TextBlock Text="💾 Configuration Management"
+                                   FontWeight="Bold"
+                                   FontSize="14"
+                                   Margin="0,0,0,10" />
+                        <Button Content="⚡ APPLY SETTINGS"
+                                Height="36"
+                                Margin="0,0,0,8"
+                                Command="{Binding ApplySettingsCommand}" />
+                        <Button Content="✓ SAVE ALL &amp; REBOOT"
+                                Height="36"
+                                Margin="0,0,0,8"
+                                Command="{Binding SaveAllSettingsCommand}" />
+                        <Button Content="⏻ REBOOT"
+                                Height="36"
+                                Command="{Binding RebootCommand}" />
+                        <TextBlock Text="Apply sends settings to device memory without saving. Save All persists to FRAM and reboots the device."
+                                   TextWrapping="Wrap"
+                                   Foreground="Gray"
+                                   FontSize="11"
+                                   Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+                    </StackPanel>
+                </ScrollViewer>
+    </DataTemplate>
+</ResourceDictionary>

@@ -1,0 +1,514 @@
+using NINA.Profile;
+using NINA.Profile.Interfaces;
+using System;
+using System.ComponentModel;
+using System.ComponentModel.Composition;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using MLAstro_Robotic_Polar_Alignment.Dockables;
+
+namespace MLAstro_Robotic_Polar_Alignment.Settings
+{
+    /// <summary>Kiểu kết nối tới MLAstroRPA.</summary>
+    public enum MlastroTransportMode
+    {
+        /// <summary>Kết nối qua cổng COM (USB Serial) - mặc định, giữ nguyên hành vi cũ.</summary>
+        Serial = 0,
+
+        /// <summary>Kết nối qua WebSocket (mDNS "MLAstroRPA.local" hoặc IP).</summary>
+        Wireless = 1
+    }
+
+    [Export]
+    [PartCreationPolicy(CreationPolicy.Shared)]
+    public class PluginSettings : INotifyPropertyChanged
+    {
+        private readonly PluginOptionsAccessor _optionsAccessor;
+
+        // Static singleton instance
+        private static PluginSettings? _instance;
+        private static readonly object _instanceLock = new();
+
+        /// <summary>
+        /// Gets the singleton instance of PluginSettings.
+        /// </summary>
+        public static PluginSettings Instance
+        {
+            get => _instance!;
+        }
+
+        /// <summary>
+        /// Clears the static singleton instance and events. Called during plugin cleanup.
+        /// </summary>
+        public static void ClearInstance()
+        {
+            lock (_instanceLock)
+            {
+                _instance = null;
+                // Clear all static event subscribers to prevent memory leaks
+                DataSourceModeChanged = null;
+            }
+        }
+
+        public static event EventHandler<PolarAlignmentDataSourceMode>? DataSourceModeChanged;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        [ImportingConstructor]
+        public PluginSettings(IProfileService profileService)
+        {
+            var pluginGuid = PluginOptionsAccessor.GetAssemblyGuid(typeof(PluginSettings));
+            _optionsAccessor = new PluginOptionsAccessor(profileService, pluginGuid ?? Guid.Empty);
+
+            // Register this instance as the singleton
+            lock (_instanceLock)
+            {
+                _instance ??= this;
+            }
+        }
+
+        public PolarAlignmentDataSourceMode DataSourceMode
+        {
+            get
+            {
+                var value = _optionsAccessor.GetValueString(nameof(DataSourceMode), PolarAlignmentDataSourceMode.Auto.ToString());
+                return Enum.TryParse<PolarAlignmentDataSourceMode>(value, true, out var mode) ? mode : PolarAlignmentDataSourceMode.Auto;
+            }
+            set
+            {
+                var currentValue = DataSourceMode;
+                _optionsAccessor.SetValueString(nameof(DataSourceMode), value.ToString());
+                OnPropertyChanged();
+
+                if (currentValue != value)
+                {
+                    DataSourceModeChanged?.Invoke(this, value);
+                }
+            }
+        }
+
+        public string ComPort
+        {
+            get => GetString(nameof(ComPort), "COM1");
+            set => SetString(value);
+        }
+
+        /// <summary>
+        /// Kiểu kết nối tới MLAstroRPA: Serial (cổng COM) hoặc Wireless (WebSocket qua mDNS/IP).
+        /// Chỉ chọn 1 trong 2 - mỗi lúc chỉ có 1 transport giữ quyền điều khiển.
+        /// </summary>
+        public MlastroTransportMode TransportMode
+        {
+            get
+            {
+                var value = _optionsAccessor.GetValueString(nameof(TransportMode), MlastroTransportMode.Serial.ToString());
+                return Enum.TryParse<MlastroTransportMode>(value, true, out var mode) ? mode : MlastroTransportMode.Serial;
+            }
+            set
+            {
+                var current = TransportMode;
+                _optionsAccessor.SetValueString(nameof(TransportMode), value.ToString());
+                OnPropertyChanged();
+                if (current != value)
+                {
+                    TransportModeChanged?.Invoke(this, value);
+                }
+            }
+        }
+
+        public static event EventHandler<MlastroTransportMode>? TransportModeChanged;
+
+        /// <summary>
+        /// Địa chỉ thiết bị ở chế độ Wireless: hostname mDNS (mặc định "MLAstroRPA.local")
+        /// hoặc IP trực tiếp (vd "192.168.4.1") khi mDNS không hoạt động.
+        /// </summary>
+        public string MlaHost
+        {
+            get => GetString(nameof(MlaHost), "MLAstroRPA.local");
+            set => SetString(value);
+        }
+
+        public int MlaPort
+        {
+            get => GetInt(nameof(MlaPort), 80);
+            set => SetInt(value);
+        }
+
+        public string MlaPath
+        {
+            get => GetString(nameof(MlaPath), "/ws");
+            set => SetString(value);
+        }
+
+        /// <summary>
+        /// Baudrate cứng của firmware MLAstroRPA (115200 8N1). Không còn cho cấu hình:
+        /// luôn trả 115200 bất kể giá trị đã lưu từ phiên trước (giữ setter no-op để tương thích binding cũ).
+        /// </summary>
+        public int BaudRate
+        {
+            get => 115200;
+            set { }
+        }
+
+        public int HandshakeTimeoutMilliseconds
+        {
+            get => GetInt(nameof(HandshakeTimeoutMilliseconds), 300);
+            set => SetInt(value);
+        }
+
+        public int PollingIntervalMilliseconds
+        {
+            get => GetInt(nameof(PollingIntervalMilliseconds), 300);
+            set => SetInt(value);
+        }
+
+        public bool ShowHardlimitMonitor
+        {
+            get => GetBool(nameof(ShowHardlimitMonitor), false);
+            set => SetBool(value);
+        }
+
+        public bool ShowSteps
+        {
+            get => GetBool(nameof(ShowSteps), false);
+            set => SetBool(value);
+        }
+
+        public double CalibTravelAz
+        {
+            get => GetDouble(nameof(CalibTravelAz), 20);
+            set => SetDouble(value);
+        }
+
+        public double CalibTravelAlt
+        {
+            get => GetDouble(nameof(CalibTravelAlt), 30);
+            set => SetDouble(value);
+        }
+
+        public int AzSgThrs
+        {
+            get => GetInt(nameof(AzSgThrs), 110);
+            set => SetInt(value);
+        }
+
+        public int AltSgThrs
+        {
+            get => GetInt(nameof(AltSgThrs), 110);
+            set => SetInt(value);
+        }
+
+        public int StallTime
+        {
+            get => GetInt(nameof(StallTime), 255);
+            set => SetInt(value);
+        }
+
+        public int EscapeRotations
+        {
+            get => GetInt(nameof(EscapeRotations), 3);
+            set => SetInt(value);
+        }
+
+        public bool EnableHardLimit
+        {
+            get => GetBool(nameof(EnableHardLimit), false);
+            set => SetBool(value);
+        }
+
+        public double LimitAzMin
+        {
+            get => GetDouble(nameof(LimitAzMin), -9);
+            set => SetDouble(value);
+        }
+
+        public double LimitAzMax
+        {
+            get => GetDouble(nameof(LimitAzMax), 9);
+            set => SetDouble(value);
+        }
+
+        public double LimitAltMin
+        {
+            get => GetDouble(nameof(LimitAltMin), -14);
+            set => SetDouble(value);
+        }
+
+        public double LimitAltMax
+        {
+            get => GetDouble(nameof(LimitAltMax), 14);
+            set => SetDouble(value);
+        }
+
+        public bool AzReverse
+        {
+            get => GetBool(nameof(AzReverse), false);
+            set => SetBool(value);
+        }
+
+        public int AzCurrentRun
+        {
+            get => GetInt(nameof(AzCurrentRun), 1000);
+            set => SetInt(value);
+        }
+
+        public int AzCurrentHold
+        {
+            get => GetInt(nameof(AzCurrentHold), 500);
+            set => SetInt(value);
+        }
+
+        public int AzBooster
+        {
+            get => GetInt(nameof(AzBooster), 120);
+            set => SetInt(value);
+        }
+
+        public int AzCoolStep
+        {
+            get => GetInt(nameof(AzCoolStep), 70);
+            set => SetInt(value);
+        }
+
+        public int AzMicrosteps
+        {
+            get => GetInt(nameof(AzMicrosteps), 16);
+            set => SetInt(value);
+        }
+
+        public int AzAccel
+        {
+            get => GetInt(nameof(AzAccel), 30000);
+            set => SetInt(value);
+        }
+
+        public int AzDecel
+        {
+            get => GetInt(nameof(AzDecel), 30000);
+            set => SetInt(value);
+        }
+
+        public double AzStepsPerDegree
+        {
+            get => GetDouble(nameof(AzStepsPerDegree), 1000);
+            set => SetDouble(value);
+        }
+
+        public int AzMode
+        {
+            get => GetInt(nameof(AzMode), 0);
+            set => SetInt(value);
+        }
+
+        public bool AltReverse
+        {
+            get => GetBool(nameof(AltReverse), false);
+            set => SetBool(value);
+        }
+
+        public int AltCurrentRun
+        {
+            get => GetInt(nameof(AltCurrentRun), 1000);
+            set => SetInt(value);
+        }
+
+        public int AltCurrentHold
+        {
+            get => GetInt(nameof(AltCurrentHold), 500);
+            set => SetInt(value);
+        }
+
+        public int AltBooster
+        {
+            get => GetInt(nameof(AltBooster), 120);
+            set => SetInt(value);
+        }
+
+        public int AltCoolStep
+        {
+            get => GetInt(nameof(AltCoolStep), 70);
+            set => SetInt(value);
+        }
+
+        public int AltMicrosteps
+        {
+            get => GetInt(nameof(AltMicrosteps), 16);
+            set => SetInt(value);
+        }
+
+        public int AltAccel
+        {
+            get => GetInt(nameof(AltAccel), 30000);
+            set => SetInt(value);
+        }
+
+        public int AltDecel
+        {
+            get => GetInt(nameof(AltDecel), 30000);
+            set => SetInt(value);
+        }
+
+        public double AltStepsPerDegree
+        {
+            get => GetDouble(nameof(AltStepsPerDegree), 1000);
+            set => SetDouble(value);
+        }
+
+        public int AltMode
+        {
+            get => GetInt(nameof(AltMode), 0);
+            set => SetInt(value);
+        }
+
+        public bool BacklashEnabled
+        {
+            get => GetBool(nameof(BacklashEnabled), false);
+            set => SetBool(value);
+        }
+
+        public int BacklashAz
+        {
+            get => GetInt(nameof(BacklashAz), 100);
+            set => SetInt(value);
+        }
+
+        public int BacklashAlt
+        {
+            get => GetInt(nameof(BacklashAlt), 80);
+            set => SetInt(value);
+        }
+
+        public bool OvershootEnabled
+        {
+            get => GetBool(nameof(OvershootEnabled), false);
+            set => SetBool(value);
+        }
+
+        public bool OvershootMoveUp
+        {
+            get => GetBool(nameof(OvershootMoveUp), false);
+            set => SetBool(value);
+        }
+
+        public bool OvershootMoveDown
+        {
+            get => GetBool(nameof(OvershootMoveDown), false);
+            set => SetBool(value);
+        }
+
+        public int OvershootDegrees
+        {
+            get => GetInt(nameof(OvershootDegrees), 0);
+            set => SetInt(value);
+        }
+
+        public int OvershootMinutes
+        {
+            get => GetInt(nameof(OvershootMinutes), 0);
+            set => SetInt(value);
+        }
+
+        public int OvershootSeconds
+        {
+            get => GetInt(nameof(OvershootSeconds), 0);
+            set => SetInt(value);
+        }
+
+        public string ApSsid
+        {
+            get => GetString(nameof(ApSsid), string.Empty);
+            set => SetString(value);
+        }
+
+        public string ApPass
+        {
+            get => GetString(nameof(ApPass), string.Empty);
+            set => SetString(value);
+        }
+
+        public string ApIp
+        {
+            get => GetString(nameof(ApIp), "192.168.4.1");
+            set => SetString(value);
+        }
+
+        public string ApSubnet
+        {
+            get => GetString(nameof(ApSubnet), "255.255.255.0");
+            set => SetString(value);
+        }
+
+        public string WifiSsid
+        {
+            get => GetString(nameof(WifiSsid), string.Empty);
+            set => SetString(value);
+        }
+
+        public string WifiPass
+        {
+            get => GetString(nameof(WifiPass), string.Empty);
+            set => SetString(value);
+        }
+
+        public string WifiIp
+        {
+            // Giá trị này là ẢNH PHẢN CHIẾU của telemetry (STAi do router cấp qua DHCP) nên KHÔNG đặt
+            // giá trị mặc định giả: khi chưa có telemetry thì để RỖNG (UI hiện trống = chưa có IP).
+            get => GetString(nameof(WifiIp), string.Empty);
+            set => SetString(value);
+        }
+
+        private string GetString(string propertyName, string defaultValue)
+        {
+            return _optionsAccessor.GetValueString(propertyName, defaultValue);
+        }
+
+        private void SetString(string value, [CallerMemberName] string propertyName = null!)
+        {
+            _optionsAccessor.SetValueString(propertyName, value ?? string.Empty);
+            OnPropertyChanged(propertyName);
+        }
+
+        private int GetInt(string propertyName, int defaultValue)
+        {
+            return _optionsAccessor.GetValueInt32(propertyName, defaultValue);
+        }
+
+        private void SetInt(int value, [CallerMemberName] string propertyName = null!)
+        {
+            _optionsAccessor.SetValueInt32(propertyName, value);
+            OnPropertyChanged(propertyName);
+        }
+
+        private bool GetBool(string propertyName, bool defaultValue)
+        {
+            var value = _optionsAccessor.GetValueString(propertyName, defaultValue.ToString());
+            return bool.TryParse(value, out var parsedValue) ? parsedValue : defaultValue;
+        }
+
+        private void SetBool(bool value, [CallerMemberName] string propertyName = null!)
+        {
+            _optionsAccessor.SetValueString(propertyName, value.ToString());
+            OnPropertyChanged(propertyName);
+        }
+
+        private double GetDouble(string propertyName, double defaultValue)
+        {
+            var value = _optionsAccessor.GetValueString(propertyName, defaultValue.ToString(CultureInfo.InvariantCulture));
+            return double.TryParse(value, NumberStyles.Float | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsedValue)
+                ? parsedValue
+                : defaultValue;
+        }
+
+        private void SetDouble(double value, [CallerMemberName] string propertyName = null!)
+        {
+            _optionsAccessor.SetValueString(propertyName, value.ToString(CultureInfo.InvariantCulture));
+            OnPropertyChanged(propertyName);
+        }
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null!)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+}

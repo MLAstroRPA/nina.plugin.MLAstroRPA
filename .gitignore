@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE - VS Code
+#.vscode/
+#.vscode/extensions/
+
+# Temp / scratch
+*.tmp
+*.TMP
+*~
+
+# Local integration spec (not for publishing)
+#MLAstroRPA-implement/tppa-mlastro-integration-spec.md
+
+ 
+Installer/MSI/bin/
+Installer/MSI/obj/  
+Installer/MSI/Plugin/
+Installer/MSI/Output/

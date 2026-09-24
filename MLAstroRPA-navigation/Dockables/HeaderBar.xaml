@@ -1,0 +1,212 @@
+<UserControl x:Class="MLAstro_Robotic_Polar_Alignment.Dockables.HeaderBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+        <!-- Force Stop Button Style - CIRCULAR (same look as the web UI: circle in a square frame).
+             NOTE: the button must stay square (54x54) because CornerRadius = half of the side = circle. -->
+        <Style x:Key="ForceStopButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="3"/>
+            <Setter Property="BorderBrush" Value="#C0392B"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="27">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#D64539"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#E74C3C"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#C0392B"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#FFD700"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Reset Error Button Style with Press Effect (shown only in ERROR state) -->
+        <Style x:Key="ResetErrorButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#B8860B"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="#8B6914"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" 
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#DAA520"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#FFD700"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#FF8C00"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#FFD700"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- HEADER - Fixed at top (shared across Navigation & Config tabs) -->
+    <Border Background="#2C3E50" 
+            Padding="10,8"
+            BorderBrush="#34495E"
+            BorderThickness="0,0,0,2">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Brand Info -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Image Source="pack://application:,,,/NINA.Plugins.MLAstroRPA;component/MLAstroRPA-navigation/Resources/MLAstro_logo.png"
+                       Width="72"
+                       Height="72"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       Margin="0,0,14,0"
+                       VerticalAlignment="Center"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="MLAstro RPA" 
+                               FontSize="18" 
+                               FontWeight="Bold" 
+                               Foreground="White"/>
+                    <TextBlock Text="Robotic Polar Alignment" 
+                               FontSize="11" 
+                               Foreground="#BDC3C7"
+                               Margin="0,2,0,0"/>
+                    <!-- Firmware version: chỉ hiện khi đã kết nối + handshake OK (chưa kết nối thì ẩn) -->
+                    <TextBlock Text="{Binding FirmwareVersion, StringFormat=Firmware {0}}" 
+                               FontSize="11" 
+                               Foreground="#BDC3C7"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding ControlsVisibility}"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Status Info -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <TextBlock Text="Status:" 
+                               Foreground="#BDC3C7" 
+                               Margin="0,0,5,0"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SystemStatus}" 
+                               FontWeight="Bold"
+                               Foreground="{Binding StatusForeground}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <!-- Trạng thái AP của thiết bị — CHỈ hiện khi đã kết nối + handshake OK:
+                     · "AP: 🟢 <IP>" = CHÍNH PC đang đi qua hotspot của ESP32 (firmware báo link=AP)
+                     · "AP: 🛜 <IP>" = AP đã lên nhưng PC đi đường khác (STA / cáp USB)
+                     · "AP: ❌"      = AP không lên / không có IP
+                     ToolTip = trạng thái link tới thiết bị (cổng COM / kết nối wireless). -->
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
+                            ToolTip="{Binding ConnectionStatusText}"
+                            Visibility="{Binding ControlsVisibility}">
+                    <TextBlock Text="AP  :"
+                               FontSize="11"
+                               Foreground="#BDC3C7"
+                               Margin="0,0,5,0"
+                               VerticalAlignment="Center"/>
+                    <!-- Icon AP (emoji màu, tự có màu sẵn): 🟢 CHÍNH PC đi qua hotspot · 🛜 AP đã lên
+                         nhưng PC đi đường khác · ❌ AP lỗi. Foreground={ApIconBrush} chỉ có tác dụng
+                         nếu sau này đổi sang glyph đơn sắc. -->
+                    <TextBlock Text="{Binding ApIconGlyph}"
+                               FontSize="12" 
+                               Foreground="{Binding ApIconBrush}"
+                               Margin="0,0,4,0"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ApStatusText}"
+                               FontSize="11"
+                               Foreground="#BDC3C7"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- STA: <icon> IP — icon vẽ bằng FONT ĐƠN SẮC (Segoe UI Symbol) nên tô MÀU được:
+                     glyph = chất lượng đường STA (📶 có internet · 📶❗ có router, không internet ·
+                     ❌ chưa vào router); màu = trạng thái CLIENT — xanh lục khi CHÍNH PC (NINA) đi
+                     qua đường STA, xanh lam khi PC đi đường khác (cáp USB / hotspot AP).
+                     Chỉ hiện khi đã kết nối + handshake OK (cùng điều kiện với dòng AP). -->
+                <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
+                            Visibility="{Binding ControlsVisibility}">
+                    <TextBlock Text="STA:"
+                               Foreground="#BDC3C7"
+                               Margin="0,0,5,0"
+                               VerticalAlignment="Center"/>
+                    <!-- Icon đường STA: glyph theo chất lượng sóng, màu theo trạng thái client.
+                         FontFamily đơn sắc bắt buộc — emoji màu sẽ bỏ qua Foreground. -->
+                    <TextBlock Text="{Binding StaIconText}"
+                               FontFamily="Segoe UI Symbol"
+                               FontSize="12" 
+                               Foreground="{Binding StaIconBrush}"
+                               Margin="0,0,5,0"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding StaStatusText}"
+                               FontSize="11"
+                               Foreground="#BDC3C7"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Force Stop Button in Header: red CIRCLE inside a square frame (like the web UI) -->
+            <Border Grid.Column="2"
+                    BorderBrush="#4A5568"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="4"
+                    VerticalAlignment="Center">
+                <Button Style="{StaticResource ForceStopButtonStyle}"
+                        Width="54"
+                        Height="54"
+                        FontSize="10"
+                        ToolTip="FORCE STOP (Emergency)"
+                        Command="{Binding ForceStopCommand}">
+                    <TextBlock Text="FORCE&#x0a;STOP" TextAlignment="Center"/>
+                </Button>
+            </Border>
+
+            <!-- Reset Error Button in Header (only visible when STATUS = ERROR) -->
+            <Button Grid.Column="3"
+                    Style="{StaticResource ResetErrorButtonStyle}"
+                    Width="85"
+                    Height="45"
+                    FontSize="11"
+                    Margin="8,0,0,0"
+                    ToolTip="RESET ERROR - clears driver error (sends ReEr:1)"
+                    Visibility="{Binding ResetErrorButtonVisibility}"
+                    Command="{Binding ResetErrorCommand}">
+                <TextBlock Text="RESET&#x0a;ERROR" TextAlignment="Center"/>
+            </Button>
+        </Grid>
+    </Border>
+</UserControl>
