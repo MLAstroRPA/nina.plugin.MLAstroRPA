@@ -60,6 +60,10 @@ namespace MLAstroRPA.Broker
         public const string SequenceCancel = "SequenceCancel";
         public const string WindowClosed = "WindowClosed";
         public const string Disconnect = "Disconnect";
+
+        /// <summary>The firmware link (serial or wireless) dropped: the axes can no longer be driven.</summary>
+        public const string FirmwareDisconnected = "FirmwareDisconnected";
+
         public const string SilenceTimeout = "SilenceTimeout";
         public const string SessionTimeout = "SessionTimeout";
         public const string StopAckTimeout = "StopAckTimeout";
@@ -81,6 +85,9 @@ namespace MLAstroRPA.Broker
 
         /// <summary>Operator resumed the run: moving and measuring may continue.</summary>
         public const string Resumed = "Resumed";
+
+        /// <summary>The operator switched the TPPA broker off in the plugin options: the session is cancelled.</summary>
+        public const string BrokerDisabled = "BrokerDisabled";
     }
 
     /// <summary>Session states reported by TPPA through <c>SessionState</c>.</summary>

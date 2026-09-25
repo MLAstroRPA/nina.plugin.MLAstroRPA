@@ -1,7 +1,7 @@
 # MLAstroRPA+TPPA — Bảng text giao diện trang Options
 
 Tài liệu liệt kê toàn bộ text hiển thị trên trang **Options** của plugin (4 tab: `TPPA OPTION`,
-`CONTROL`, `CONNECTION`, `CONFIGURATION`), gồm text tĩnh, text động (binding) và **toàn bộ tooltip**.
+`CONTROL`, `CONNECTION`, `HARDWARE SETTING`), gồm text tĩnh, text động (binding) và **toàn bộ tooltip**.
 
 - Cập nhật lần cuối: 2026-09-14
 - Nguồn: `Options.xaml`, `MLAstroRPA-navigation\Plugin\MLAstroOptions.xaml`,
@@ -95,7 +95,7 @@ Tài liệu liệt kê toàn bộ text hiển thị trên trang **Options** củ
 
 ---
 
-## 5. Tab `CONFIGURATION`
+## 5. Tab `HARDWARE SETTING`
 
 | Khu vực | Text hiển thị |
 |---|---|
@@ -125,9 +125,9 @@ Tài liệu liệt kê toàn bộ text hiển thị trên trang **Options** củ
 | T11 | Nút `FORCE STOP` | Header | FORCE STOP (Emergency) | inline |
 | T12 | Nút `RESET ERROR` | Header (khi ERROR) | RESET ERROR - clears driver error (sends ReEr:1) | inline |
 | T13 | Nút `🗑 CLEAR` | CONTROL → Alarm History | Xoá toàn bộ lịch sử Alarm | inline |
-| T14 | Nút `👁` cạnh AP Password | CONFIGURATION → WiFi | Show/Hide AP password | inline |
-| T15 | Nút `👁` cạnh WiFi Password | CONFIGURATION → WiFi | Show/Hide WiFi password | inline |
-| T16 | Ô `Current STA Mode IP` | CONFIGURATION → WiFi | Lấy từ telemetry (STAi). Trống = chưa có IP từ router. | inline |
+| T14 | Nút `👁` cạnh AP Password | HARDWARE SETTING → WiFi | Show/Hide AP password | inline |
+| T15 | Nút `👁` cạnh WiFi Password | HARDWARE SETTING → WiFi | Show/Hide WiFi password | inline |
+| T16 | Ô `Current STA Mode IP` | HARDWARE SETTING → WiFi | Lấy từ telemetry (STAi). Trống = chưa có IP từ router. | inline |
 
 ---
 

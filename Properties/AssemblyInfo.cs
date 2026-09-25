@@ -42,9 +42,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("LongDescription", @"MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware.
 
 This plugin provides the complete MLAstro Robotic Polar Alignment hardware plugin (CONTROL,
-CONNECTION and CONFIGURATION for the MLAstro RPA motor controller over serial or WiFi).
+HARDWARE SETTING and CONNECTION for the MLAstro RPA motor controller over serial or WiFi).
 
-* CONTROL / CONNECTION / CONFIGURATION tabs: connect to the MLAstro RPA controller (ESP32) via
+* CONTROL / HARDWARE SETTING / CONNECTION tabs: connect to the MLAstro RPA controller (ESP32) via
   serial or WiFi, run the robotic polar alignment routine, configure motor drivers, soft limits,
   backlash & P.A overshoot and WiFi.
 

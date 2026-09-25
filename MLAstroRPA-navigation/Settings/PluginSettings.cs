@@ -536,7 +536,7 @@ namespace MLAstroRPA.Settings
         /// <summary>
         /// Đảo dấu (software) cho trục Azimuth: lật hướng các lệnh dịch chuyển do plugin gửi trong
         /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
-        /// trong tab CONFIGURATION (đảo chiều ở firmware, ghi AzRD:).
+        /// trong tab HARDWARE SETTING (đảo chiều ở firmware, ghi AzRD:).
         /// </summary>
         public bool SoftwareReverseAzimuth
         {
@@ -547,36 +547,12 @@ namespace MLAstroRPA.Settings
         /// <summary>
         /// Đảo dấu (software) cho trục Altitude: lật hướng các lệnh dịch chuyển do plugin gửi trong
         /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
-        /// trong tab CONFIGURATION (đảo chiều ở firmware, ghi AlRD:).
+        /// trong tab HARDWARE SETTING (đảo chiều ở firmware, ghi AlRD:).
         /// </summary>
         public bool SoftwareReverseAltitude
         {
             get => GetBool(nameof(SoftwareReverseAltitude), false);
             set => SetBool(value);
-        }
-
-        /// <summary>Bù backlash trục Azimuth (arcmin): vượt target rồi quay lại một đoạn nhỏ.</summary>
-        public double CorrectionAzBacklashArcMin
-        {
-            get => GetDouble(nameof(CorrectionAzBacklashArcMin), 0);
-            set => SetDouble(value);
-        }
-
-        /// <summary>Trần thời gian của cả phiên sửa tự động (giây).</summary>
-        public int CorrectionTimeoutSec
-        {
-            get => GetInt(nameof(CorrectionTimeoutSec), 1800);
-            set => SetInt(value);
-        }
-
-        /// <summary>
-        /// Số lần đo liên tiếp đạt tolerance trước khi yêu cầu TPPA chốt phiên. TPPA vẫn verify lại
-        /// bằng policy của nó, nên giá trị này chỉ là điều kiện kích hoạt phía controller.
-        /// </summary>
-        public int CorrectionConsecutiveToFinish
-        {
-            get => GetInt(nameof(CorrectionConsecutiveToFinish), 2);
-            set => SetInt(value);
         }
 
         private string GetString(string propertyName, string defaultValue)

@@ -27,7 +27,7 @@ namespace MLAstroRPA.Services
     ///    (giống serial) → firmware trao quyền điều khiển + monitor cho PC và khóa điều khiển Web.
     ///  - Telemetry JSON được chuyển ngược thành ĐÚNG định dạng text của firmware serial rồi bơm
     ///    vào <see cref="SerialConnectionService.InjectIncomingText"/> → toàn bộ parser/UI hiện có
-    ///    (CONTROL + CONFIGURATION + dock TPPA) hoạt động y như khi dùng cổng COM.
+    ///    (CONTROL + HARDWARE SETTING + dock TPPA) hoạt động y như khi dùng cổng COM.
     ///  - Lệnh dạng text của firmware serial được dịch sang JSON của WebSocket API.
     /// </summary>
     public sealed class MlastroWebSocketService : INotifyPropertyChanged, IDisposable

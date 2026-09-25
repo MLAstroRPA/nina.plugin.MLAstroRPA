@@ -3,7 +3,7 @@
 ## Project Guidelines
 - This is the **MLAstroRPA** NINA plugin (assembly `NINA.Plugins.MLAstroRPA`, display name `MLAstroRPA`,
   PluginId GUID `af3ab7b3-f11a-4671-a87f-e7c3985fb509`). It covers the MLAstro Robotic Polar
-  Alignment hardware control only: CONTROL / CONNECTION / CONFIGURATION / SOFTWARE SETTING options
+  Alignment hardware control only: CONTROL / HARDWARE SETTING / SOFTWARE SETTING / CONNECTION options
   tabs, header bar and the MLAstro docking panel.
 - Three Point Polar Alignment (TPPA) is **NOT part of this assembly**. TPPA is a separate NINA
   plugin (separate repository) that talks to this one through the NINA message broker. The
@@ -19,7 +19,7 @@
   controller (`MLAstroRPA-navigation\Plugin\MLAstroController.cs`) is NOT a manifest - it is owned by
   `MLAstroPlugin.MLAstro`.
 - The plugin Options page is the root `Options.xaml` (`DataTemplate x:Key="MLAstroRPA_Options"`)
-  - a TabControl with tabs: `CONTROL`, `CONNECTION`, `CONFIGURATION`, `SOFTWARE SETTING`. The MLAstro
+  - a TabControl with tabs: `CONTROL`, `HARDWARE SETTING`, `SOFTWARE SETTING`, `CONNECTION`. The MLAstro
   tab bodies live in `MLAstroRPA-navigation\Plugin\MLAstroOptions.xaml` (merged via `MergedDictionaries`).
 - In the plugin options UI, only top-level sections (tabs / top-level Expanders) should be
   expandable/collapsible and they should default to expanded; nested subsections must not be collapsible.

@@ -167,22 +167,33 @@ namespace MLAstroRPA.Broker
             return true;
         }
 
-        /// <summary>Sends an immediate stop to the firmware.</summary>
-        public Task StopAsync()
+        /// <summary>Sends an immediate stop to the firmware. Returns true when the STOP really went out.</summary>
+        public Task<bool> StopAsync()
         {
             try
             {
-                if (_serial.IsConnected)
+                if (!_serial.IsConnected)
                 {
-                    _serial.Send("STOP:1\n");
+                    Logger.Warning("[MLAstro][Broker] Cannot send STOP: the hardware link is not connected.");
+                    return Task.FromResult(false);
+                }
+
+                var sent = _serial.Send("STOP:1\n");
+                if (sent)
+                {
                     Logger.Info("[MLAstro][Broker] Sent STOP to the hardware.");
                 }
-                return Task.CompletedTask;
+                else
+                {
+                    Logger.Warning("[MLAstro][Broker] STOP was not accepted by the link.");
+                }
+
+                return Task.FromResult(sent);
             }
             catch (Exception ex)
             {
                 Logger.Error($"[MLAstro][Broker] Failed to stop the hardware: {ex.Message}");
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
         }
 

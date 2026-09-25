@@ -1973,7 +1973,7 @@ namespace MLAstroRPA.Services
         // Dữ liệu nhận từ WebSocket được tổng hợp lại thành ĐÚNG định dạng text của firmware
         // serial rồi bơm vào CÙNG pipeline xử lý ở đây. Nhờ vậy TelemetryParser,
         // TelemetryDataReceived, CompletionReceived, ErrorStateChanged và toàn bộ UI
-        // (CONTROL + CONFIGURATION) hoạt động y như khi dùng cổng COM.
+        // (CONTROL + HARDWARE SETTING) hoạt động y như khi dùng cổng COM.
         // =====================================================================
 
         /// <summary>Bơm một dòng text đã tổng hợp từ WebSocket (telemetry / ok / ERROR: / COMPLETED).</summary>

@@ -22,7 +22,7 @@ namespace NINA.Plugins.MLAstroRPA {
         public static string PluginId { get; private set; }
 
         /// <summary>
-        /// MLAstro options/state controller backing the CONTROL / CONNECTION / CONFIGURATION tabs of
+        /// MLAstro options/state controller backing the CONTROL / HARDWARE SETTING / CONNECTION tabs of
         /// the options page. DataContext for those tabs is this instance's MLAstro property.
         /// </summary>
         public MLAstroController MLAstro { get; private set; }

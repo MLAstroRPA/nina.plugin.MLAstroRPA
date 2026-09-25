@@ -321,7 +321,7 @@ Any equivalent structure works (INDI properties, ASCOM members, app state object
 - Open the Web UI (`http://MLAstroRPA.local/`) in parallel to compare: while your client owns control, the Web
   UI must show "monitor/locked" and still update position + log.
 - Compare against the reference client (the NINA plugin): its CONTROL tab shows position + alarms and its
-  CONFIGURATION tab shows soft limits / motor driver settings — the same values must match yours.
+  HARDWARE SETTING tab shows soft limits / motor driver settings — the same values must match yours.
 - To watch the raw JSON flow: enable the WS library logging, or use `websocat ws://MLAstroRPA.local/ws` and
   paste the handshake to observe telemetry.
 - A mock WebSocket server from the firmware project (`TestTool/mock_server.py`, not included here) can be used

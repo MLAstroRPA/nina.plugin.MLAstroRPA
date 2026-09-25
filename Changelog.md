@@ -11,6 +11,8 @@
 
 ## 2.2.2.0 — 2026-09-25
 
+### Changed — options tabs renamed and reordered: CONTROL, HARDWARE SETTING, SOFTWARE SETTING, CONNECTION
+### Changed — SOFTWARE SETTING tab: TPPA/broker status moved above the expander, overshoot and reverse-direction toggles moved up next to the assign toggle
 ### Changed — plugin identity fully separated from MLAstroRPA+TPPA (own PluginId, MSI UpgradeCode, namespaces and resource keys) so both plugins can stay installed side by side
 ### Changed — broker log shows direction (RPA → TPPA / TPPA → RPA) with a colour legend
 ### Changed — English tooltips on the options page; overshoot values sit under their own direction and follow the master toggle

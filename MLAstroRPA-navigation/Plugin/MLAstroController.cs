@@ -21,7 +21,7 @@ namespace MLAstroRPA.Plugin
 {
     /// <summary>
     /// Merged MLAstroRPA+TPPA plugin: this is no longer a NINA plugin manifest. It is the MLAstro
-    /// options/state controller that backs the CONTROL / CONNECTION / CONFIGURATION tabs of the
+    /// options/state controller that backs the CONTROL / HARDWARE SETTING / CONNECTION tabs of the
     /// combined plugin's options page. Owned (and disposed) by
     /// NINA.Plugins.MLAstroRPA.PolarizationPlugin (the single IPluginManifest of this assembly).
     /// </summary>
@@ -104,7 +104,7 @@ namespace MLAstroRPA.Plugin
 
         public bool IsSerialConnected => _serialConnectionService.IsConnected || _webSocketService.IsConnected;
 
-        /// <summary>TPPA đang giữ quyền điều khiển -> khoá tab CONFIGURATION.</summary>
+        /// <summary>TPPA đang giữ quyền điều khiển -> khoá tab HARDWARE SETTING.</summary>
         public bool IsExternalLocked => _serialConnectionService.IsExternalControlActive
                                         || (_webSocketService.IsConnected && _webSocketService.IsExternalControlActive);
 
@@ -429,8 +429,6 @@ namespace MLAstroRPA.Plugin
         /// <summary>Dòng log ngắn của tích hợp broker (mới nhất lên trên) để kiểm tra không cần mở log NINA.</summary>
         public ObservableCollection<BrokerLogEntry> BrokerLog { get; } = new();
 
-        public ICommand StopExternalSessionCommand { get; }
-
         /// <summary>
         /// Switch bắt tay với TPPA. ON = announce capabilities + subscribe event + chạy runner.
         /// OFF = huỷ subscribe, bỏ qua mọi event; nếu đang có phiên thì gửi Cancel trước khi tắt.
@@ -575,36 +573,6 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        public double CorrectionAzBacklashArcMin
-        {
-            get => Settings.CorrectionAzBacklashArcMin;
-            set
-            {
-                Settings.CorrectionAzBacklashArcMin = Math.Max(0, value);
-                OnPropertyChanged();
-            }
-        }
-
-        public int CorrectionTimeoutSec
-        {
-            get => Settings.CorrectionTimeoutSec;
-            set
-            {
-                Settings.CorrectionTimeoutSec = Math.Max(60, value);
-                OnPropertyChanged();
-            }
-        }
-
-        public int CorrectionConsecutiveToFinish
-        {
-            get => Settings.CorrectionConsecutiveToFinish;
-            set
-            {
-                Settings.CorrectionConsecutiveToFinish = Math.Max(1, value);
-                OnPropertyChanged();
-            }
-        }
-
         /// <summary>Cảnh báo cấu hình overshoot (chỉ hiện khi overshoot đang bật và không hợp lệ).</summary>
         public string OvershootWarningText
         {
@@ -627,27 +595,6 @@ namespace MLAstroRPA.Plugin
 
         public Visibility OvershootWarningVisibility =>
             string.IsNullOrEmpty(OvershootWarningText) ? Visibility.Collapsed : Visibility.Visible;
-
-        /// <summary>Người dùng bấm Stop trên tab SOFTWARE SETTING: gửi Cancel và giữ motor dừng.</summary>
-        private async Task StopExternalSessionAsync()
-        {
-            var runner = _externalRunner;
-            if (runner == null || !runner.IsSessionRunning)
-            {
-                AppendBrokerLog("No external session is running.");
-                return;
-            }
-
-            try
-            {
-                AppendBrokerLog("Stopping the external session on request.");
-                await runner.AbortSessionAsync(TppaBrokerReason.UserStop).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex);
-            }
-        }
 
         /// <summary>
         /// STOP / FORCE STOP on the dock: the axes were stopped by hand, so the TPPA session has to end
@@ -749,7 +696,10 @@ namespace MLAstroRPA.Plugin
             {
                 if (_externalRunner?.IsSessionRunning == true)
                 {
-                    _externalRunner.AbortSessionAsync(TppaBrokerReason.UserStop).GetAwaiter().GetResult();
+                    // Cancel trước, tắt broker sau: TPPA phải nhận được lý do thay vì chỉ thấy
+                    // controller im lặng rồi tự hết hạn.
+                    AppendBrokerLog("Broker off: asking TPPA to cancel the session (BrokerDisabled).");
+                    _externalRunner.AbortSessionAsync(TppaBrokerReason.BrokerDisabled).GetAwaiter().GetResult();
                 }
             }
             catch (Exception ex)
@@ -852,7 +802,6 @@ namespace MLAstroRPA.Plugin
             ClearSystemLogCommand = new RelayCommand(_webSocketService.ClearSystemLog);
             ExportSystemLogCommand = new RelayCommand(ExportSystemLog);
             ResetErrorCommand = new RelayCommand(ResetError);
-            StopExternalSessionCommand = new RelayCommand(async () => await StopExternalSessionAsync());
 
             Settings.PropertyChanged += OnSettingsPropertyChanged;
             _serialConnectionService.PropertyChanged += OnSerialConnectionServicePropertyChanged;
@@ -869,6 +818,13 @@ namespace MLAstroRPA.Plugin
             // Transport wireless đổi trạng thái ở luồng nền → marshal về UI thread trước khi báo binding.
             _webSocketService.PropertyChanged += (_, __) =>
             {
+                // Mất link wireless giữa phiên TPPA: giống mất link serial, trục không còn điều khiển
+                // được nữa nên phải báo TPPA cancel thay vì để nó chờ measurement tiếp theo.
+                if (!_webSocketService.IsConnected)
+                {
+                    AbortExternalSessionForHardware(TppaBrokerReason.FirmwareDisconnected, "Firmware link lost (wireless)");
+                }
+
                 try
                 {
                     var dispatcher = Application.Current?.Dispatcher;
@@ -1697,7 +1653,7 @@ namespace MLAstroRPA.Plugin
                 // báo TPPA cancel thay vì để nó chờ thêm measurement.
                 if (!_serialConnectionService.IsConnected)
                 {
-                    AbortExternalSessionForHardware(TppaBrokerReason.Disconnect, "Firmware link lost");
+                    AbortExternalSessionForHardware(TppaBrokerReason.FirmwareDisconnected, "Firmware link lost");
                 }
             }
 

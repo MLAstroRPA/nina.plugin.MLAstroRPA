@@ -25,8 +25,27 @@ namespace MLAstroRPA.Broker
         /// <summary>Number of unusable (unstable / failed) measurements before the session is cancelled.</summary>
         private const int MaxUnusableMeasurements = 5;
 
-        /// <summary>Settle time between the overshoot move and the back-off move.</summary>
-        private const int OvershootSettleMs = 1000;
+        /// <summary>
+        /// How many consecutive measurements may come back worse before the correction is declared to run
+        /// the wrong way and the session is stopped instead of driving the axes further off the target.
+        /// </summary>
+        private const int MaxWorseningMeasurements = 2;
+
+        /// <summary>A step counts as worse only when the error grows by this fraction of the previous one.</summary>
+        private const double WorseErrorFraction = 0.25;
+
+        /// <summary>
+        /// Consecutive solves inside the tolerance that TPPA has to report before this controller asks it
+        /// to finish. TPPA counts them itself; this is only the fallback for a build that publishes the
+        /// counter without the ready flag.
+        /// </summary>
+        private const int TppaConfirmationsToFinish = 2;
+
+        /// <summary>
+        /// Used when TPPA never reported its heartbeat timings: if nothing at all arrives from TPPA for
+        /// this long while a session is open, the session is abandoned instead of running forever.
+        /// </summary>
+        private const int TppaSilenceFallbackMs = 30000;
 
         private readonly TppaBrokerClient _client;
         private readonly HardwareAligner _aligner;
@@ -36,7 +55,7 @@ namespace MLAstroRPA.Broker
         private readonly SemaphoreSlim _queueSignal = new SemaphoreSlim(0);
         private readonly object _gate = new object();
         private readonly System.Timers.Timer _keepAliveTimer;
-        private readonly System.Timers.Timer _sessionTimeoutTimer;
+        private readonly System.Timers.Timer _watchdogTimer;
 
         private CancellationTokenSource _sessionCts;
         private Task _worker;
@@ -47,17 +66,29 @@ namespace MLAstroRPA.Broker
         private string _windowId;
         private TaskCompletionSource<TppaAdjustmentGrant> _windowGrant;
         private TppaMeasurement _lastMeasurement;
-        private int _consecutiveBelowTolerance;
+        private double _previousTotalErrorArcMin;
+        private int _worseningStreak;
+        private long _lastInboundTicks;
         private int _unusableMeasurements;
         private int _moveCounter;
         private string _statusText = "Idle";
         private bool _paused;
         private bool _resumeNeedsMeasurement;
+        private bool _stopping;
 
         /// <summary>True while TPPA reported that the operator paused the run.</summary>
         private bool IsPaused
         {
             get { lock (_gate) { return _paused; } }
+        }
+
+        /// <summary>
+        /// True from the moment a stop is served until the next session starts. The worker wakes up as soon
+        /// as the pending move is released and must not report the move it just aborted as a hardware fault.
+        /// </summary>
+        private bool IsStopping
+        {
+            get { lock (_gate) { return _stopping; } }
         }
 
         public ExternalCorrectionRunner(TppaBrokerClient client, HardwareAligner aligner, PluginSettings settings)
@@ -69,8 +100,8 @@ namespace MLAstroRPA.Broker
             _keepAliveTimer = new System.Timers.Timer(2000) { AutoReset = true };
             _keepAliveTimer.Elapsed += OnKeepAliveTick;
 
-            _sessionTimeoutTimer = new System.Timers.Timer(1000) { AutoReset = false };
-            _sessionTimeoutTimer.Elapsed += OnSessionTimeoutTick;
+            _watchdogTimer = new System.Timers.Timer(1000) { AutoReset = true };
+            _watchdogTimer.Elapsed += OnWatchdogTick;
         }
 
         /// <summary>Raised whenever <see cref="StatusText"/> changes.</summary>
@@ -135,8 +166,11 @@ namespace MLAstroRPA.Broker
                                                         new ControllerCancelPayload { Reason = reason });
             }
 
-            CancelSessionInternal();
+            // STOP first, cancel second: the axes must be told to stop before the session token is
+            // cancelled, so the STOP never loses the race with the abort.
+            lock (_gate) { _stopping = true; }
             await _aligner.StopAsync().ConfigureAwait(false);
+            CancelSessionInternal();
 
             if (sessionEnvelope != null)
             {
@@ -154,6 +188,10 @@ namespace MLAstroRPA.Broker
         private void OnEnvelopeReceived(object sender, ExternalCorrectionEnvelope envelope)
         {
             if (envelope == null || !_running) { return; }
+
+            // Every message from TPPA - a measurement, a heartbeat or a state update - keeps the silence
+            // watchdog quiet for another interval.
+            Volatile.Write(ref _lastInboundTicks, DateTime.UtcNow.Ticks);
 
             switch (envelope.Kind)
             {
@@ -215,20 +253,23 @@ namespace MLAstroRPA.Broker
             var reason = request?.Reason ?? TppaBrokerReason.UserStop;
             Logger.Info($"[MLAstro][Broker] TPPA requested a stop: {reason}.");
 
-            CancelSessionInternal();
+            // Set before the move is released: AbortPendingMove wakes the worker immediately, and a worker
+            // that sees the aborted move as a fault would stop the axes a second time.
+            lock (_gate) { _stopping = true; }
 
+            // STOP first, cancel second: the axes must be told to stop even when the session is already
+            // going away, and a STOP that is sent after the cancellation can lose the race with it.
             var stopStatus = TppaHardwareStopStatus.Ok;
             try
             {
-                // The operator asked for a stop: STOP goes to the firmware unconditionally, and the move
-                // that is waiting for its completion token is released at the same time.
                 _aligner.AbortPendingMove();
-                if (_aligner.IsConnected)
+                if (await _aligner.StopAsync().ConfigureAwait(false))
                 {
-                    await _aligner.StopAsync().ConfigureAwait(false);
+                    Logger.Info("[MLAstro][Broker] Stop request: STOP:1 sent to the firmware before cancelling.");
                 }
                 else
                 {
+                    Logger.Warning("[MLAstro][Broker] Stop request: no STOP could be sent to the firmware.");
                     stopStatus = TppaHardwareStopStatus.Unknown;
                 }
             }
@@ -237,6 +278,8 @@ namespace MLAstroRPA.Broker
                 Logger.Error($"[MLAstro][Broker] Stop failed: {ex.Message}");
                 stopStatus = TppaHardwareStopStatus.Fault;
             }
+
+            CancelSessionInternal();
 
             await _client.PublishAsync(TppaBrokerKind.Stopped,
                                        envelope.SessionId,
@@ -269,14 +312,21 @@ namespace MLAstroRPA.Broker
 
                 try
                 {
+                    // A STOP is only useful while the axes really turn; when they do not, the capture
+                    // window that is still waiting for its grant is dropped instead, so the move that was
+                    // already planned never starts after the pause.
                     var stopped = await _aligner.StopMoveAsync().ConfigureAwait(false);
-                    if (stopped)
+                    var windowDropped = CancelPendingWindowRequest();
+
+                    if (stopped || windowDropped)
                     {
-                        // The move we were running is gone: TPPA expects a fresh request after the resume.
+                        // Whatever we interrupted is gone: TPPA expects a fresh request after the resume.
                         lock (_gate)
                         {
                             _resumeNeedsMeasurement = true;
                         }
+
+                        Logger.Info($"[MLAstro][Broker] Pause handled: stopped={stopped}, dropped pending window={windowDropped}.");
                     }
                 }
                 catch (Exception ex)
@@ -439,11 +489,12 @@ namespace MLAstroRPA.Broker
                 cts = _sessionCts;
             }
 
-            var settings = ExternalCorrectionSettings.FromPluginSettings(_settings);
-            _sessionTimeoutTimer.Interval = Math.Max(30, settings.TimeoutSec) * 1000.0;
-            _sessionTimeoutTimer.Start();
+            // The length of a session is TPPA's business: it owns its own safety time limit and asks for a
+            // stop when that limit expires. This controller only watches that TPPA is still there at all.
+            _lastInboundTicks = DateTime.UtcNow.Ticks;
+            _watchdogTimer.Start();
 
-            Logger.Info($"[MLAstro][Broker] Session {SessionId} started. Session limit {settings.TimeoutSec} s.");
+            Logger.Info($"[MLAstro][Broker] Session {SessionId} started. Watching for TPPA silence.");
             _ = cts;
             NotifySessionActive(true);
         }
@@ -493,6 +544,32 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
+            var totalErrorArcMin = Math.Abs(measurement.TotalErrorArcMin);
+            if (IsCorrectionGettingWorse(measurement, totalErrorArcMin))
+            {
+                _worseningStreak++;
+                Logger.Warning($"[MLAstro][Broker] The correction made the error worse " +
+                               $"({_previousTotalErrorArcMin:0.##}' -> {totalErrorArcMin:0.##}'), " +
+                               $"measurement {_worseningStreak}/{MaxWorseningMeasurements}.");
+                SetStatus($"Correction running the wrong way ({_worseningStreak}/{MaxWorseningMeasurements})");
+
+                if (_worseningStreak >= MaxWorseningMeasurements)
+                {
+                    // Fail-safe: stopping is the only safe answer when moving makes things worse - a wrong
+                    // reverse flag or a reversed axis would otherwise drive the mount off with every step.
+                    await PublishFaultAndEndAsync(TppaBrokerReason.ControllerFault,
+                                                  $"The correction made the polar error worse for {MaxWorseningMeasurements} " +
+                                                  "measurements in a row. Check the software reverse direction settings " +
+                                                  "(Reverse Azimuth / Altitude) and that the axes really move the way they should.")
+                                 .ConfigureAwait(false);
+                    return;
+                }
+            }
+            else
+            {
+                _worseningStreak = 0;
+            }
+
             var settings = ExternalCorrectionSettings.FromPluginSettings(_settings);
             var warnings = new List<string>();
             var plan = ExternalCorrectionEngine.CreatePlan(measurement, settings, warnings);
@@ -505,23 +582,27 @@ namespace MLAstroRPA.Broker
 
             if (plan.VerifyOnly)
             {
-                await HandleVerifyOnlyAsync(measurement, settings, token).ConfigureAwait(false);
+                await HandleVerifyOnlyAsync(measurement, token).ConfigureAwait(false);
                 return;
             }
 
-            ResetConsecutiveBelowTolerance();
+            // The next measurement is compared against the error this move was planned from, so the next
+            // move can be judged: better, unchanged, or worse.
+            _previousTotalErrorArcMin = totalErrorArcMin;
             SetStatus($"Adjusting: {plan.Reason}");
             await ExecutePlanAsync(measurement, plan, settings, token).ConfigureAwait(false);
         }
 
-        private async Task HandleVerifyOnlyAsync(TppaMeasurement measurement, ExternalCorrectionSettings settings, CancellationToken token)
+        private async Task HandleVerifyOnlyAsync(TppaMeasurement measurement, CancellationToken token)
         {
             if (measurement.ToleranceReached || measurement.AutoFinishConditionMet)
             {
-                _consecutiveBelowTolerance++;
                 SetStatus($"Within tolerance ({measurement.TotalErrorArcMin:0.##}') - confirming");
 
-                if (measurement.AutoFinishConditionMet || _consecutiveBelowTolerance >= settings.ConsecutiveToFinish)
+                // TPPA owns the finish policy: it counts the consecutive solves that are inside the
+                // tolerance and marks the measurement once its own gate is met. The counter in the payload
+                // is only a fallback for a TPPA build that publishes it without the ready flag.
+                if (measurement.AutoFinishConditionMet || measurement.ConsecutiveBelowTolerance >= TppaConfirmationsToFinish)
                 {
                     Logger.Info("[MLAstro][Broker] Alignment is within tolerance. Asking TPPA to complete the session.");
                     await _client.PublishAsync(TppaBrokerKind.RequestCompletion,
@@ -530,7 +611,7 @@ namespace MLAstroRPA.Broker
                                                {
                                                    WindowId = null,
                                                    Reason = TppaBrokerReason.CompletionRequested,
-                                                   ConsecutiveBelowTolerance = _consecutiveBelowTolerance
+                                                   ConsecutiveBelowTolerance = Math.Max(1, measurement.ConsecutiveBelowTolerance)
                                                }).ConfigureAwait(false);
                     SetStatus("Verifying final alignment");
                     return;
@@ -574,17 +655,41 @@ namespace MLAstroRPA.Broker
             var windowId = await RequestWindowAsync(measurement, plan, token).ConfigureAwait(false);
             if (windowId == null)
             {
+                if (IsPaused)
+                {
+                    // The pause dropped the window: no move was made, and a fresh measurement is asked
+                    // for once the run resumes.
+                    Logger.Info("[MLAstro][Broker] Move dropped: the run was paused before the window was granted.");
+                    lock (_gate) { _resumeNeedsMeasurement = true; }
+                    SetStatus("Paused by TPPA");
+                    return;
+                }
+
                 Logger.Warning("[MLAstro][Broker] TPPA did not grant a capture window in time. Not moving.");
                 SetStatus("Capture window not granted");
+                return;
+            }
+
+            if (IsPaused)
+            {
+                // The window was granted before the operator paused: dropping the move here is what keeps
+                // the axes still until the run resumes. The window is left to expire on TPPA's side
+                // because no keep-alive is sent for it any more.
+                Logger.Info("[MLAstro][Broker] Move dropped: the run was paused before the move started.");
+                StopKeepAlive();
+                ClearWindow();
+                lock (_gate) { _resumeNeedsMeasurement = true; }
+                SetStatus("Paused by TPPA");
                 return;
             }
 
             var aligned = await _aligner.AlignAsync(plan, token).ConfigureAwait(false);
             if (!aligned)
             {
-                if (token.IsCancellationRequested)
+                if (token.IsCancellationRequested || IsStopping)
                 {
-                    Logger.Info("[MLAstro][Broker] Move aborted because the session was cancelled.");
+                    // Stopped on purpose: the session token may not be cancelled yet at this instant.
+                    Logger.Info("[MLAstro][Broker] Move aborted because the session was stopped.");
                     return;
                 }
 
@@ -604,32 +709,9 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
-            if (settings.OvershootEnabled && plan.HasMove)
-            {
-                var backOff = BuildBackOffPlan(plan, settings);
-                if (backOff != null)
-                {
-                    try
-                    {
-                        await Task.Delay(OvershootSettleMs, token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return;
-                    }
-
-                    Logger.Info($"[MLAstro][Broker] Backing off the overshoot: {backOff.Reason}");
-                    var backed = await _aligner.AlignAsync(backOff, token).ConfigureAwait(false);
-                    if (!backed)
-                    {
-                        if (token.IsCancellationRequested) { return; }
-                        await PublishFaultAndEndAsync(TppaBrokerReason.ControllerFault,
-                                                      $"The overshoot back-off move {_moveCounter} did not complete on the hardware.")
-                                     .ConfigureAwait(false);
-                        return;
-                    }
-                }
-            }
+            // No back-off move: the overshoot leg already travelled past the target and the next
+            // measurement corrects whatever is left, exactly like the MLAstro TPPA plugin did. Coming back
+            // on purpose would put the play back into the axis the overshoot just removed.
 
             StopKeepAlive();
             ClearWindow();
@@ -647,26 +729,19 @@ namespace MLAstroRPA.Broker
             SetStatus("Waiting for the next measurement");
         }
 
-        /// <summary>Builds the move that cancels the overshoot and returns to the target.</summary>
-        private static CorrectionPlan BuildBackOffPlan(CorrectionPlan plan, ExternalCorrectionSettings settings)
+        /// <summary>
+        /// Releases a capture window request that is still waiting for its grant, so a pause cannot be
+        /// followed by a move that was already planned. Returns true when a request was really waiting.
+        /// </summary>
+        private bool CancelPendingWindowRequest()
         {
-            var overshoot = plan.AltitudeUp ? settings.OvershootUpArcMin : settings.OvershootDownArcMin;
-            if (overshoot <= 0) { return null; }
-
-            var backOff = new CorrectionPlan
+            TaskCompletionSource<TppaAdjustmentGrant> pending;
+            lock (_gate)
             {
-                HasMove = true,
-                ToleranceArcMin = plan.ToleranceArcMin,
-                MoveAzimuth = plan.MoveAzimuth,
-                MoveAltitude = plan.MoveAltitude,
-                AzimuthMagnitudeArcMin = plan.MoveAzimuth ? settings.OvershootUpArcMin : 0,
-                AltitudeMagnitudeArcMin = plan.MoveAltitude ? overshoot : 0,
-                // Coming back means moving the opposite way.
-                AzimuthRight = !plan.AzimuthRight,
-                AltitudeUp = !plan.AltitudeUp
-            };
-            backOff.Reason = $"az {backOff.AzimuthMagnitudeArcMin:0.##}' alt {backOff.AltitudeMagnitudeArcMin:0.##}' (back-off)";
-            return backOff.HasMove ? backOff : null;
+                pending = _windowGrant;
+            }
+
+            return pending != null && pending.TrySetResult(null);
         }
 
         private async Task<string> RequestWindowAsync(TppaMeasurement measurement, CorrectionPlan plan, CancellationToken token)
@@ -751,35 +826,46 @@ namespace MLAstroRPA.Broker
 
         // ===== session bookkeeping =====
 
-        private void OnSessionTimeoutTick(object sender, ElapsedEventArgs e)
+        /// <summary>
+        /// Ticks once a second while a session is open. TPPA heartbeats the session, so a long silence
+        /// means TPPA (or NINA) is gone: the session is abandoned instead of staying open forever with the
+        /// manual controls locked out and nobody driving the axes.
+        /// </summary>
+        private void OnWatchdogTick(object sender, ElapsedEventArgs e)
         {
             if (!IsSessionRunning) { return; }
 
-            var settings = ExternalCorrectionSettings.FromPluginSettings(_settings);
-            Logger.Warning($"[MLAstro][Broker] The session exceeded its {settings.TimeoutSec} s limit. Cancelling it.");
-            _ = AbortSessionAsync(TppaBrokerReason.SessionTimeout);
+            var capabilities = _client.Capabilities;
+            var silenceLimitMs = capabilities?.SilenceTimeoutMs > 0
+                ? Math.Max(10000, capabilities.SilenceTimeoutMs)
+                : TppaSilenceFallbackMs;
+
+            var silenceMs = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Volatile.Read(ref _lastInboundTicks)).TotalMilliseconds;
+            if (silenceMs <= silenceLimitMs) { return; }
+
+            Logger.Warning($"[MLAstro][Broker] TPPA has been silent for {silenceMs / 1000:0} s with a session open. Abandoning the session.");
+            _ = AbandonSilentSessionAsync();
+        }
+
+        private async Task AbandonSilentSessionAsync()
+        {
+            await AbortSessionAsync(TppaBrokerReason.ExternalLost).ConfigureAwait(false);
+            SetStatus("TPPA stopped answering");
         }
 
         private void ResetSessionState()
         {
             lock (_gate)
             {
-                _consecutiveBelowTolerance = 0;
                 _unusableMeasurements = 0;
                 _moveCounter = 0;
                 _windowId = null;
                 _lastMeasurement = null;
                 _paused = false;
                 _resumeNeedsMeasurement = false;
-            }
-            ExternalCorrectionEngine.ResetBacklashHistory();
-        }
-
-        private void ResetConsecutiveBelowTolerance()
-        {
-            lock (_gate)
-            {
-                _consecutiveBelowTolerance = 0;
+                _stopping = false;
+                _previousTotalErrorArcMin = 0;
+                _worseningStreak = 0;
             }
         }
 
@@ -794,7 +880,7 @@ namespace MLAstroRPA.Broker
         private void CancelSessionInternal()
         {
             StopKeepAlive();
-            _sessionTimeoutTimer.Stop();
+            _watchdogTimer.Stop();
 
             CancellationTokenSource cts;
             lock (_gate)
@@ -805,6 +891,8 @@ namespace MLAstroRPA.Broker
                 _windowGrant = null;
                 _paused = false;
                 _resumeNeedsMeasurement = false;
+                _previousTotalErrorArcMin = 0;
+                _worseningStreak = 0;
             }
 
             try { cts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -816,6 +904,19 @@ namespace MLAstroRPA.Broker
         private void NotifySessionActive(bool active)
         {
             try { SessionActiveChanged?.Invoke(this, active); } catch (Exception ex) { Logger.Error(ex); }
+        }
+
+        /// <summary>
+        /// True when this measurement is clearly worse than the one the last move was planned from, which is
+        /// the signature of a correction that runs the wrong way (reversed axis, wrong reverse flag).
+        /// Ordinary solve noise stays below the margin and does not count as worse.
+        /// </summary>
+        private bool IsCorrectionGettingWorse(TppaMeasurement measurement, double totalErrorArcMin)
+        {
+            if (_previousTotalErrorArcMin <= 0) { return false; }
+
+            var grown = totalErrorArcMin - _previousTotalErrorArcMin;
+            return grown > Math.Max(2 * measurement.ToleranceArcMin, _previousTotalErrorArcMin * WorseErrorFraction);
         }
 
         private async Task PublishFaultAndEndAsync(string reason, string detail)
@@ -872,7 +973,7 @@ namespace MLAstroRPA.Broker
             _disposed = true;
             Stop();
             _keepAliveTimer.Dispose();
-            _sessionTimeoutTimer.Dispose();
+            _watchdogTimer.Dispose();
             _queueSignal.Dispose();
         }
     }

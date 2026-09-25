@@ -3,8 +3,8 @@
 This folder contains scripts and tooling to create the MSI installer for the
 **MLAstroRPA** N.I.N.A. plugin (`NINA.Plugins.MLAstroRPA.dll`).
 
-The plugin covers the MLAstro Robotic Polar Alignment hardware control (CONTROL / CONNECTION /
-CONFIGURATION / SOFTWARE SETTING tabs) and is installed to
+The plugin covers the MLAstro Robotic Polar Alignment hardware control (CONTROL / HARDWARE SETTING /
+SOFTWARE SETTING / CONNECTION tabs) and is installed to
 `%LocalAppData%\NINA\Plugins\3.0.0\MLAstroRPA`.
 
 ## Tasks (VS Code)

@@ -18,7 +18,7 @@ namespace MLAstroRPA.Plugin
 {
     /// <summary>
     /// Code-behind for the MLAstro Options fragment module (body DataTemplates of the CONTROL /
-    /// CONNECTION / CONFIGURATION tabs). Exported so NINA merges it into the application resources
+    /// HARDWARE SETTING / CONNECTION tabs). Exported so NINA merges it into the application resources
     /// app-wide; the combined plugin options shell (Options.xaml) references the body templates with
     /// DynamicResource. It is NOT an options page template of its own.
     /// </summary>

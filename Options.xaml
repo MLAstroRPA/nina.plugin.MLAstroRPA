@@ -5,7 +5,7 @@
     xmlns:view="clr-namespace:MLAstroRPA.Dockables">
     <!--
         MLAstro-only options page (TPPA tab removed - TPPA is a separate plugin now).
-        Tab bodies come from the MLAstroOptions module (CONTROL / CONNECTION / CONFIGURATION) and are
+        Tab bodies come from the MLAstroOptions module (CONTROL / HARDWARE SETTING / CONNECTION) and are
         referenced with DynamicResource so they can stay in that separate ResourceDictionary.
     -->
     <DataTemplate x:Key="MLAstroRPA_Options">
@@ -68,17 +68,17 @@
                     <ContentControl Content="{Binding MLAstro}"
                                     ContentTemplate="{DynamicResource MlaRpaControlBody}" />
                 </TabItem>
-                <TabItem Header="CONNECTION">
+                <TabItem Header="HARDWARE SETTING">
                     <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaRpaConnectionBody}" />
-                </TabItem>
-                <TabItem Header="CONFIGURATION">
-                    <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaRpaConfigurationBody}" />
+                                    ContentTemplate="{DynamicResource MlaRpaHardwareBody}" />
                 </TabItem>
                 <TabItem Header="SOFTWARE SETTING">
                     <ContentControl Content="{Binding MLAstro}"
                                     ContentTemplate="{DynamicResource MlaRpaSoftwareBody}" />
+                </TabItem>
+                <TabItem Header="CONNECTION">
+                    <ContentControl Content="{Binding MLAstro}"
+                                    ContentTemplate="{DynamicResource MlaRpaConnectionBody}" />
                 </TabItem>
             </TabControl>
         </DockPanel>

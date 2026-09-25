@@ -269,8 +269,8 @@
                 </ScrollViewer>
     </DataTemplate>
 
-    <!-- CONFIGURATION tab body (hosted with DataContext = MLAstroController) -->
-    <DataTemplate x:Key="MlaRpaConfigurationBody">
+    <!-- HARDWARE SETTING tab body (hosted with DataContext = MLAstroController) -->
+    <DataTemplate x:Key="MlaRpaHardwareBody">
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       Loaded="OnOptionsScrollViewerLoaded"
                       PreviewMouseWheel="OnScrollViewerPreviewMouseWheel">
@@ -645,6 +645,17 @@
     <DataTemplate x:Key="MlaRpaSoftwareBody">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="10">
+                <!-- Status nằm NGOÀI expander để luôn nhìn thấy, kể cả khi expander bị thu gọn. -->
+                <Border Margin="0,0,0,10"
+                        Padding="8,6"
+                        Background="Transparent"
+                        BorderThickness="0">
+                    <StackPanel>
+                        <TextBlock FontWeight="SemiBold" Text="{Binding TppaBrokerStatusText}" />
+                        <TextBlock Margin="0,2,0,0" Text="{Binding ExternalCorrectionStatusText}" />
+                    </StackPanel>
+                </Border>
+
                 <Expander Header="External correction (three point polar alignment)"
                           Margin="0,0,0,15"
                           IsExpanded="True">
@@ -654,32 +665,12 @@
                                       VerticalAlignment="Center"
                                       Margin="0,0,8,0"
                                       ToolTip="When on, the plugin announces its capabilities, receives the error from TPPA and drives the motors. TPPA must have external correction enabled in its own Settings tab." />
-                            <TextBlock Text="Handshake with the Three Point Polar Alignment plugin"
+                            <TextBlock Text="Assign to Three Point Polar Alignment plugin"
                                        VerticalAlignment="Center"
                                        FontWeight="SemiBold"
                                        FontSize="14" />
                         </StackPanel>
-                        <TextBlock Margin="0,6,0,0"
-                                   Foreground="Gray"
-                                   FontSize="11"
-                                   TextWrapping="Wrap"
-                                   Text="Requires the Three Point Polar Alignment plugin with external correction enabled (its Settings tab). Both switches have to be on; TPPA keeps ownership of every session." />
-
-                        <Border Margin="0,10,0,0"
-                                Padding="8,6"
-                                Background="Transparent"
-                                BorderThickness="0">
-                            <StackPanel>
-                                <TextBlock FontWeight="SemiBold" Text="{Binding TppaBrokerStatusText}" />
-                                <TextBlock Margin="0,2,0,0" Text="{Binding ExternalCorrectionStatusText}" />
-                                <Button Content="Stop external session"
-                                        Margin="0,8,0,0"
-                                        HorizontalAlignment="Left"
-                                        Command="{Binding StopExternalSessionCommand}"
-                                        ToolTip="Sends Cancel to TPPA and stops the motors immediately." />
-                            </StackPanel>
-                        </Border>
-
+                         
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -698,8 +689,9 @@
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <TextBlock VerticalAlignment="Center" Text="Correction axis mode" />
-                            <ComboBox Grid.Column="1"
+                            <TextBlock Grid.Row="6" VerticalAlignment="Center" Text="Correction axis mode" />
+                            <ComboBox Grid.Row="6"
+                                      Grid.Column="1"
                                       MinWidth="160"
                                       Margin="5,0,0,0"
                                       HorizontalAlignment="Left"
@@ -709,17 +701,17 @@
                                 <ComboBoxItem>Larger error axis</ComboBoxItem>
                             </ComboBox>
 
-                            <TextBlock Grid.Row="1" Margin="0,5,0,0" VerticalAlignment="Center" Text="Correction safety factor" />
-                            <TextBox Grid.Row="1"
+                            <TextBlock Grid.Row="7" Margin="0,5,0,0" VerticalAlignment="Center" Text="Correction safety factor" />
+                            <TextBox Grid.Row="7"
                                      Grid.Column="1"
                                      MinWidth="80"
                                      Margin="5,5,0,0"
                                      HorizontalAlignment="Left"
                                      Text="{Binding CorrectionSafetyFactor, StringFormat={}{0:0.##}}"
-                                     ToolTip="Multiplied by the measured error before the move is sent. 0.75 = correct 75 % of the error each step to avoid overshooting the target." />
+                                     ToolTip="Multiplied by the measured error before the move is sent (0.75 = correct 75 % of it). The altitude axis uses the full error instead when overshoot runs for that direction." />
 
-                            <TextBlock Grid.Row="2" Margin="0,5,0,0" VerticalAlignment="Center" Text="Maximum step per correction (arcmin)" />
-                            <TextBox Grid.Row="2"
+                            <TextBlock Grid.Row="8" Margin="0,5,0,0" VerticalAlignment="Center" Text="Maximum step per correction (arcmin)" />
+                            <TextBox Grid.Row="8"
                                      Grid.Column="1"
                                      MinWidth="80"
                                      Margin="5,5,0,0"
@@ -727,37 +719,19 @@
                                      Text="{Binding CorrectionMaxStepArcMin, StringFormat={}{0:0.##}}"
                                      ToolTip="Upper limit for a single correction step - keeps a large error from producing a dangerous slew." />
 
-                            <TextBlock Grid.Row="3" Margin="0,5,0,0" VerticalAlignment="Center" Text="Confirmations below tolerance before finishing" />
-                            <TextBox Grid.Row="3"
-                                     Grid.Column="1"
-                                     MinWidth="80"
-                                     Margin="5,5,0,0"
-                                     HorizontalAlignment="Left"
-                                     Text="{Binding CorrectionConsecutiveToFinish}"
-                                     ToolTip="How many consecutive measurements must be within tolerance before the controller asks TPPA to finish. TPPA still verifies with its own policy." />
-
-                            <TextBlock Grid.Row="4" Margin="0,5,0,0" VerticalAlignment="Center" Text="Session time limit (seconds)" />
-                            <TextBox Grid.Row="4"
-                                     Grid.Column="1"
-                                     MinWidth="80"
-                                     Margin="5,5,0,0"
-                                     HorizontalAlignment="Left"
-                                     Text="{Binding CorrectionTimeoutSec}"
-                                     ToolTip="Maximum duration of the whole correction session. On expiry the controller sends Cancel and stops the motors." />
-
-                            <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Margin="0,10,0,0">
+                            <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,0">
                                 <StackPanel Orientation="Horizontal">
                                     <CheckBox IsChecked="{Binding CorrectionOvershootEnabled}"
                                               VerticalAlignment="Center"
                                               Margin="0,0,8,0"
-                                              ToolTip="Deliberately move past the target and come back within the SAME capture window to take up backlash." />
-                                    <TextBlock Text="Enable overshoot (move past the target, then back off)"
+                                              ToolTip="Move past the target by the overshoot amount. The altitude axis uses the full error instead of the safety factor and the next measurement corrects whatever is left." />
+                                    <TextBlock Text="Enable software overshoot"
                                                VerticalAlignment="Center"
                                                FontSize="14" />
                                 </StackPanel>
                             </StackPanel>
 
-                            <StackPanel Grid.Row="6" Grid.Column="0" Orientation="Horizontal" Margin="24,5,0,0">
+                            <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="24,5,0,0" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <CheckBox IsChecked="{Binding CorrectionOvershootUpEnabled}"
                                           IsEnabled="{Binding CorrectionOvershootEnabled}"
                                           VerticalAlignment="Center"
@@ -767,7 +741,7 @@
                                            VerticalAlignment="Center"
                                            FontSize="12" />
                             </StackPanel>
-                            <StackPanel Grid.Row="6" Grid.Column="1" Margin="5,5,0,0" Orientation="Horizontal">
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="5,5,0,0" Orientation="Horizontal" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBox MinWidth="80"
                                          IsEnabled="{Binding CorrectionOvershootEnabled}"
                                          Text="{Binding CorrectionOvershootUpArcMin, StringFormat={}{0:0.##}}"
@@ -779,7 +753,7 @@
                                            Text="arcmin" />
                             </StackPanel>
 
-                            <StackPanel Grid.Row="7" Grid.Column="0" Orientation="Horizontal" Margin="24,6,0,0">
+                            <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="24,6,0,0" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <CheckBox IsChecked="{Binding CorrectionOvershootDownEnabled}"
                                           IsEnabled="{Binding CorrectionOvershootEnabled}"
                                           VerticalAlignment="Center"
@@ -789,7 +763,7 @@
                                            VerticalAlignment="Center"
                                            FontSize="12" />
                             </StackPanel>
-                            <StackPanel Grid.Row="7" Grid.Column="1" Margin="5,6,0,0" Orientation="Horizontal">
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="5,6,0,0" Orientation="Horizontal" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBox MinWidth="80"
                                          IsEnabled="{Binding CorrectionOvershootEnabled}"
                                          Text="{Binding CorrectionOvershootDownArcMin, StringFormat={}{0:0.##}}"
@@ -801,7 +775,7 @@
                                            Text="arcmin" />
                             </StackPanel>
 
-                            <TextBlock Grid.Row="8"
+                            <TextBlock Grid.Row="3"
                                        Grid.ColumnSpan="2"
                                        Margin="0,5,0,0"
                                        Foreground="#C0392B"
@@ -809,49 +783,29 @@
                                        Text="{Binding OvershootWarningText}"
                                        Visibility="{Binding OvershootWarningVisibility}" />
 
-                            <TextBlock Grid.Row="9" Margin="0,8,0,0" VerticalAlignment="Center" Text="Azimuth backlash compensation (arcmin)" />
-                            <TextBox Grid.Row="9"
-                                     Grid.Column="1"
-                                     MinWidth="80"
-                                     Margin="5,8,0,0"
-                                     HorizontalAlignment="Left"
-                                     Text="{Binding CorrectionAzBacklashArcMin, StringFormat={}{0:0.##}}"
-                                     ToolTip="When the azimuth correction direction changes versus the previous step, add this extra arcmin to take up backlash. 0 = off." />
+                            <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,10,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox IsChecked="{Binding SoftwareReverseAzimuth}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
+                                              ToolTip="Flips the azimuth (Left/Right) direction of the ALIGN commands this plugin sends during an external correction session." />
+                                    <TextBlock Text="Reverse Azimuth direction (software)"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <CheckBox IsChecked="{Binding SoftwareReverseAltitude}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
+                                              ToolTip="Flips the altitude (Up/Down) direction of the ALIGN commands this plugin sends during an external correction session." />
+                                    <TextBlock Text="Reverse Altitude direction (software)"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                </StackPanel>
+                            </StackPanel>
+
                         </Grid>
-                    </StackPanel>
-                </Expander>
-
-                <!-- Software reverse: đảo dấu phía plugin, luôn hiển thị (không phụ thuộc việc có chọn
-                     PA system như bên TPPA). Khác "Reverse Direction" của tab CONFIGURATION -
-                     cái đó là đảo chiều ở firmware (ghi AzRD:/AlRD: vào FRAM). -->
-                <Expander Header="Software reverse direction"
-                          Margin="0,0,0,15"
-                          IsExpanded="True">
-                    <StackPanel Margin="10">
-                        <TextBlock Foreground="Gray"
-                                   FontSize="11"
-                                   TextWrapping="Wrap"
-                                   Text="Inverts the direction of the moves this plugin commands during an external correction session. Software sign flip only - nothing is written to the firmware (that is the Reverse Direction option in the CONFIGURATION tab)." />
-
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <CheckBox IsChecked="{Binding SoftwareReverseAzimuth}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,8,0"
-                                      ToolTip="Flips the azimuth (Left/Right) direction of the ALIGN commands this plugin sends during an external correction session." />
-                            <TextBlock Text="Reverse Azimuth direction (software)"
-                                       VerticalAlignment="Center"
-                                       FontSize="14" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <CheckBox IsChecked="{Binding SoftwareReverseAltitude}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,8,0"
-                                      ToolTip="Flips the altitude (Up/Down) direction of the ALIGN commands this plugin sends during an external correction session." />
-                            <TextBlock Text="Reverse Altitude direction (software)"
-                                       VerticalAlignment="Center"
-                                       FontSize="14" />
-                        </StackPanel>
                     </StackPanel>
                 </Expander>
 

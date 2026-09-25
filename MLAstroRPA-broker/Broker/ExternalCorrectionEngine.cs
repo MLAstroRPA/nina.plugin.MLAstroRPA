@@ -30,9 +30,6 @@ namespace MLAstroRPA.Broker
         public double OvershootDownArcMin { get; set; } = 5;
         public bool ReverseAzimuth { get; set; }
         public bool ReverseAltitude { get; set; }
-        public double AzimuthBacklashArcMin { get; set; }
-        public int ConsecutiveToFinish { get; set; } = 2;
-        public int TimeoutSec { get; set; } = 1800;
 
         public static ExternalCorrectionSettings FromPluginSettings(PluginSettings settings)
         {
@@ -49,10 +46,7 @@ namespace MLAstroRPA.Broker
                 OvershootUpArcMin = Math.Max(0, settings.CorrectionOvershootUpArcMin),
                 OvershootDownArcMin = Math.Max(0, settings.CorrectionOvershootDownArcMin),
                 ReverseAzimuth = settings.SoftwareReverseAzimuth,
-                ReverseAltitude = settings.SoftwareReverseAltitude,
-                AzimuthBacklashArcMin = Math.Max(0, settings.CorrectionAzBacklashArcMin),
-                ConsecutiveToFinish = Math.Max(1, settings.CorrectionConsecutiveToFinish),
-                TimeoutSec = Math.Max(60, settings.CorrectionTimeoutSec)
+                ReverseAltitude = settings.SoftwareReverseAltitude
             };
         }
 
@@ -154,33 +148,24 @@ namespace MLAstroRPA.Broker
             var moveAltitude = altitudeError > 0 && altitudeDirection != ExternalAltitudeDirection.None;
 
             var azimuthMagnitude = moveAzimuth ? Step(azimuthError, settings) : 0;
-            var altitudeMagnitude = moveAltitude ? Step(altitudeError, settings) : 0;
 
-            // Overshoot can be enabled per direction: the altitude axis has one switch for moving up and
-            // one for moving down. Azimuth moves follow the master switch only.
+            // Overshoot is an altitude feature with one switch per direction, and it works the way the
+            // MLAstro TPPA plugin always did: the axis goes the FULL error plus the overshoot past the
+            // target, and the next measurement corrects whatever is left. There is no back-off move - the
+            // extra travel is what takes the play out of the axis, a deliberate return would put it back.
             var movesUp = altitudeDirection == ExternalAltitudeDirection.Up;
             var overshootAltitude = settings.OvershootEnabled
                                     && (movesUp ? settings.OvershootUpEnabled : settings.OvershootDownEnabled);
             var altitudeOvershootArcMin = movesUp ? settings.OvershootUpArcMin : settings.OvershootDownArcMin;
 
-            if (moveAzimuth && settings.OvershootEnabled)
-            {
-                azimuthMagnitude += settings.OvershootUpArcMin;
-                WarnIfOvershootIsNotUsable(settings.OvershootUpArcMin, plan.ToleranceArcMin, warnings);
-            }
+            var altitudeMagnitude = !moveAltitude ? 0
+                : overshootAltitude
+                    ? Math.Min(altitudeError + altitudeOvershootArcMin, settings.MaxStepArcMin)
+                    : Step(altitudeError, settings);
 
             if (moveAltitude && overshootAltitude)
             {
-                altitudeMagnitude += altitudeOvershootArcMin;
                 WarnIfOvershootIsNotUsable(altitudeOvershootArcMin, plan.ToleranceArcMin, warnings);
-            }
-
-            if (moveAzimuth && altitudeMagnitude == 0
-                && settings.AzimuthBacklashArcMin > 0
-                && IsBacklashDirectionChange(measurement.AzimuthDirectionValue))
-            {
-                // Backlash compensation for a direction change: move past the target, then come back.
-                azimuthMagnitude += settings.AzimuthBacklashArcMin;
             }
 
             plan.MoveAzimuth = moveAzimuth;
@@ -221,19 +206,5 @@ namespace MLAstroRPA.Broker
         public const string OvershootWarning =
             "Overshoot is not larger than the alignment tolerance. At the top of the overshoot the measured error is about the overshoot itself, so a sample that already looks finished can appear in the middle of the move chain. Increase the overshoot or turn it off.";
 
-        /// <summary>
-        /// Backlash compensation is only useful when the previous move went the other way. The controller
-        /// keeps one sample of history, which is enough for the long move chains this mode produces.
-        /// </summary>
-        private static ExternalAzimuthDirection? lastAzimuthDirection;
-
-        public static void ResetBacklashHistory() => lastAzimuthDirection = null;
-
-        private static bool IsBacklashDirectionChange(ExternalAzimuthDirection direction)
-        {
-            var changed = lastAzimuthDirection.HasValue && lastAzimuthDirection.Value != direction;
-            lastAzimuthDirection = direction;
-            return changed;
-        }
     }
 }
