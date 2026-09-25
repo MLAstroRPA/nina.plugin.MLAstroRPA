@@ -1,4 +1,4 @@
-Kế hoạch làm plugin MLAstro-broker-TPPA:
+﻿Kế hoạch làm plugin MLAstro-broker-TPPA:
 1. Sửa broker TPPA để đáp ứng luồng hoạt động nhưa sau:
 TPPA cài đặt: (không chọn system, không bật `Do automated adjustment`) bật sẵn chế độ Auto continue expose sau khi solve ra sai số. 
 Bắt đầu routine: nhấn start, TPPA chụp 3 hình solve ra sai số gửi qua broker, TPPA kiểm ra cờ adjusting=true tạm dừng chụp hình, false tiếp tục lặp lại chụp 1 hình và đưa ra sai số.... 
@@ -80,7 +80,7 @@ Giữ đúng đề xuất của họ (Kind-based) để PR dễ được nhận.
 
 - Gửi **cả độ và arcmin** để MLAstro không phải tự đổi (tránh lệch làm tròn).
 - Số gửi đi = **đúng** `PolarErrorDetermination.CurrentMountAxis{Azimuth,Altitude}Error.Degree` đang dùng cho UI/vòng lặp.
-- Hướng sửa **không gửi qua payload**: MLAstro tự suy từ dấu của `AzimuthErrorArcMin`/`AltitudeErrorArcMin` + cờ `Northern` (az dương = Left, âm = Right; alt dương = Down ở bắc bán cầu, Up ở nam) — 2 property dẫn xuất trong `TppaMeasurement`.
+- Hướng sửa **không gửi qua payload**: MLAstro tự suy từ dấu của `AzimuthErrorArcMin`/`AltitudeErrorArcMin` + cờ `Northern` (az dương = Left, âm = Right; alt dương = Down ở bắc bán cầu, Up ở nam) — 2 property dẫn xuất trong `BridgeMeasurement`.
 - `CalculationMode`: legacy / continuous (estimator) — chỉ để log/hiển thị, không đổi hành vi.
 
 ### 1.5 An toàn & vòng đời (bắt buộc)

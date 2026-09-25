@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -16,7 +16,7 @@ namespace MLAstroRPA.Broker
     /// the TPPA event topic, announces this controller until TPPA answers, keeps the last received
     /// capabilities and forwards every envelope to whoever runs the alignment session.
     /// </summary>
-    public sealed class TppaBrokerClient : ISubscriber, IDisposable
+    public sealed class BridgeClient : ISubscriber, IDisposable
     {
         /// <summary>
         /// Announce interval. The announce IS the handshake: TPPA treats a controller as present only
@@ -33,11 +33,11 @@ namespace MLAstroRPA.Broker
         private long _sequence;
         private bool _subscribed;
         private bool _disposed;
-        private TppaCapabilities _capabilities;
+        private BridgeCapabilities _capabilities;
         private DateTimeOffset? _lastReplyAt;
         private string _statusText = "off";
 
-        public TppaBrokerClient(IMessageBroker broker, PluginSettings settings)
+        public BridgeClient(IMessageBroker broker, PluginSettings settings)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
@@ -49,7 +49,7 @@ namespace MLAstroRPA.Broker
         public event EventHandler StatusChanged;
 
         /// <summary>Raised for every envelope received from TPPA.</summary>
-        public event EventHandler<ExternalCorrectionEnvelope> EnvelopeReceived;
+        public event EventHandler<BridgeEnvelope> EnvelopeReceived;
 
         /// <summary>
         /// Raised for every envelope sent to or received from TPPA, so the options page can show the
@@ -70,7 +70,7 @@ namespace MLAstroRPA.Broker
         }
 
         /// <summary>Capabilities reported by TPPA, or null when TPPA never answered.</summary>
-        public TppaCapabilities Capabilities
+        public BridgeCapabilities Capabilities
         {
             get { lock (_gate) { return _capabilities; } }
         }
@@ -83,7 +83,7 @@ namespace MLAstroRPA.Broker
                 lock (_gate)
                 {
                     return _capabilities != null
-                           && _capabilities.InterfaceVersion == TppaBrokerContract.InterfaceVersion;
+                           && _capabilities.InterfaceVersion == BridgeContract.InterfaceVersion;
                 }
             }
         }
@@ -111,7 +111,7 @@ namespace MLAstroRPA.Broker
 
             if (!_subscribed)
             {
-                _broker.Subscribe(TppaBrokerContract.EventTopic, this);
+                _broker.Subscribe(BridgeContract.EventTopic, this);
                 _subscribed = true;
                 Logger.Info("[MLAstro][Broker] Subscribed to the polar alignment external topic.");
             }
@@ -130,7 +130,7 @@ namespace MLAstroRPA.Broker
             {
                 try
                 {
-                    _broker.Unsubscribe(TppaBrokerContract.EventTopic, this);
+                    _broker.Unsubscribe(BridgeContract.EventTopic, this);
                 }
                 catch (Exception ex)
                 {
@@ -151,47 +151,47 @@ namespace MLAstroRPA.Broker
         /// <summary>Publishes a message on the controller to TPPA topic.</summary>
         public Task PublishAsync(string kind, string sessionId, object payload, string replyTo = null, string commandId = null)
         {
-            var envelope = ExternalCorrectionEnvelope.Create(kind,
+            var envelope = BridgeEnvelope.Create(kind,
                                                              sessionId,
                                                              commandId ?? Guid.NewGuid().ToString("N"),
                                                              replyTo,
                                                              Interlocked.Increment(ref _sequence),
-                                                             TppaBrokerContract.TppaRecipient,
+                                                             BridgeContract.BridgeRecipient,
                                                              payload);
             RaiseTraffic(BrokerLogDirection.Tx, envelope.Kind);
-            return _broker.Publish(new ExternalCorrectionCommandMessage(envelope));
+            return _broker.Publish(new BridgeCommandMessage(envelope));
         }
 
         public Task AnnounceAsync()
         {
             var announce = new ControllerCapabilitiesAnnounce
             {
-                Controller = TppaBrokerContract.ControllerName,
+                Controller = BridgeContract.ControllerName,
                 ControllerVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown",
-                InterfaceVersion = TppaBrokerContract.InterfaceVersion,
+                InterfaceVersion = BridgeContract.InterfaceVersion,
                 SupportedKinds = new[]
                 {
-                    TppaBrokerKind.Capabilities,
-                    TppaBrokerKind.ControllerReady,
-                    TppaBrokerKind.BeginAdjustment,
-                    TppaBrokerKind.RequestMeasurement,
-                    TppaBrokerKind.RequestCompletion,
-                    TppaBrokerKind.KeepAlive,
-                    TppaBrokerKind.Stopped,
-                    TppaBrokerKind.Cancel,
-                    TppaBrokerKind.Fault
+                    BridgeKind.Capabilities,
+                    BridgeKind.ControllerReady,
+                    BridgeKind.BeginAdjustment,
+                    BridgeKind.RequestMeasurement,
+                    BridgeKind.RequestCompletion,
+                    BridgeKind.KeepAlive,
+                    BridgeKind.Stopped,
+                    BridgeKind.Cancel,
+                    BridgeKind.Fault
                 },
                 SessionId = ActiveSessionId
             };
 
-            return PublishAsync(TppaBrokerKind.Capabilities, null, announce);
+            return PublishAsync(BridgeKind.Capabilities, null, announce);
         }
 
         public Task OnMessageReceived(IMessage message)
         {
             if (message == null || _disposed) { return Task.CompletedTask; }
 
-            var envelope = ExternalCorrectionEnvelope.FromJson(message.Content as string);
+            var envelope = BridgeEnvelope.FromJson(message.Content as string);
             if (envelope == null)
             {
                 Logger.Warning("[MLAstro][Broker] Ignored a malformed message from the polar alignment plugin.");
@@ -200,7 +200,7 @@ namespace MLAstroRPA.Broker
 
             RaiseTraffic(BrokerLogDirection.Rx, BrokerTrafficText.Received(envelope));
 
-            if (string.Equals(envelope.Kind, TppaBrokerKind.Capabilities, StringComparison.Ordinal))
+            if (string.Equals(envelope.Kind, BridgeKind.Capabilities, StringComparison.Ordinal))
             {
                 HandleCapabilities(envelope);
             }
@@ -224,9 +224,9 @@ namespace MLAstroRPA.Broker
             catch (Exception ex) { Logger.Error($"[MLAstro][Broker] Traffic log handler failed: {ex.Message}"); }
         }
 
-        private void HandleCapabilities(ExternalCorrectionEnvelope envelope)
+        private void HandleCapabilities(BridgeEnvelope envelope)
         {
-            var capabilities = envelope.PayloadAs<TppaCapabilities>();
+            var capabilities = envelope.PayloadAs<BridgeCapabilities>();
             if (capabilities == null) { return; }
 
             lock (_gate)
@@ -238,10 +238,10 @@ namespace MLAstroRPA.Broker
             SetStatus(BuildStatusText(capabilities));
         }
 
-        internal static string BuildStatusText(TppaCapabilities capabilities)
+        internal static string BuildStatusText(BridgeCapabilities capabilities)
         {
             if (capabilities == null) { return "TPPA: not found"; }
-            if (capabilities.InterfaceVersion != TppaBrokerContract.InterfaceVersion)
+            if (capabilities.InterfaceVersion != BridgeContract.InterfaceVersion)
             {
                 return $"TPPA: incompatible (v{capabilities.InterfaceVersion})";
             }

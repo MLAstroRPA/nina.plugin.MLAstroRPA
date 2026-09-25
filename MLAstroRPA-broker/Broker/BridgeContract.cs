@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -12,7 +12,7 @@ namespace MLAstroRPA.Broker
     /// plugins do not share an assembly, so both keep their own copy of the names: a change here is a
     /// contract change and must be mirrored on the TPPA side.
     /// </summary>
-    public static class TppaBrokerContract
+    public static class BridgeContract
     {
         /// <summary>Interface version carried by every message. Bump on an incompatible change.</summary>
         public const int InterfaceVersion = 1;
@@ -24,7 +24,7 @@ namespace MLAstroRPA.Broker
         public const string CommandTopic = "PolarAlignmentPlugin_PolarAlignment_ExternalCommand";
 
         /// <summary>Value used in <c>IntendedRecipient</c> for TPPA addressed messages.</summary>
-        public const string TppaRecipient = "TPPA";
+        public const string BridgeRecipient = "TPPA";
 
         /// <summary>Value used in <c>IntendedRecipient</c> for controller addressed messages.</summary>
         public const string ControllerRecipient = "MLAstroRPA";
@@ -34,7 +34,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Message kinds exchanged on the external correction topics.</summary>
-    public static class TppaBrokerKind
+    public static class BridgeKind
     {
         public const string Capabilities = "Capabilities";
         public const string ControllerReady = "ControllerReady";
@@ -54,7 +54,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Reasons attached to session state, stop, cancel and session ended messages.</summary>
-    public static class TppaBrokerReason
+    public static class BridgeReason
     {
         public const string UserStop = "UserStop";
         public const string SequenceCancel = "SequenceCancel";
@@ -91,7 +91,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Session states reported by TPPA through <c>SessionState</c>.</summary>
-    public static class TppaBrokerState
+    public static class BridgeState
     {
         public const string Preparing = "Preparing";
         public const string Measuring = "Measuring";
@@ -102,7 +102,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Status of a received <c>Measurement</c>.</summary>
-    public static class TppaMeasurementStatus
+    public static class BridgeMeasurementStatus
     {
         public const string Valid = "Valid";
         public const string Unstable = "Unstable";
@@ -110,7 +110,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Hardware stop outcome reported back to TPPA.</summary>
-    public static class TppaHardwareStopStatus
+    public static class BridgeHardwareStopStatus
     {
         public const string Ok = "ok";
         public const string Unknown = "unknown";
@@ -118,7 +118,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Azimuth correction direction, derived from the sign of the measured azimuth error.</summary>
-    public enum ExternalAzimuthDirection
+    public enum BridgeAzimuthDirection
     {
         None,
         Left,
@@ -126,7 +126,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Altitude correction direction, derived from the sign of the measured altitude error and the hemisphere.</summary>
-    public enum ExternalAltitudeDirection
+    public enum BridgeAltitudeDirection
     {
         None,
         Up,
@@ -137,9 +137,9 @@ namespace MLAstroRPA.Broker
     /// Wire envelope. Its JSON is the <see cref="IMessage.Content"/> of every message on both external
     /// topics, which keeps the two plugins independent of each other's assemblies.
     /// </summary>
-    public sealed class ExternalCorrectionEnvelope
+    public sealed class BridgeEnvelope
     {
-        public int Version { get; set; } = TppaBrokerContract.InterfaceVersion;
+        public int Version { get; set; } = BridgeContract.InterfaceVersion;
         public string SessionId { get; set; }
         public string CommandId { get; set; }
         public string ReplyTo { get; set; }
@@ -150,12 +150,12 @@ namespace MLAstroRPA.Broker
 
         public string ToJson() => JsonConvert.SerializeObject(this, Formatting.None);
 
-        public static ExternalCorrectionEnvelope FromJson(string json)
+        public static BridgeEnvelope FromJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json)) { return null; }
             try
             {
-                return JsonConvert.DeserializeObject<ExternalCorrectionEnvelope>(json);
+                return JsonConvert.DeserializeObject<BridgeEnvelope>(json);
             }
             catch (JsonException)
             {
@@ -168,7 +168,7 @@ namespace MLAstroRPA.Broker
             return Payload?.ToObject<T>();
         }
 
-        public static ExternalCorrectionEnvelope Create(string kind,
+        public static BridgeEnvelope Create(string kind,
                                                         string sessionId,
                                                         string commandId,
                                                         string replyTo,
@@ -176,7 +176,7 @@ namespace MLAstroRPA.Broker
                                                         string recipient,
                                                         object payload)
         {
-            return new ExternalCorrectionEnvelope
+            return new BridgeEnvelope
             {
                 Kind = kind,
                 SessionId = sessionId,
@@ -190,11 +190,11 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Broker message published on the controller -&gt; TPPA topic.</summary>
-    public sealed class ExternalCorrectionCommandMessage : IMessage
+    public sealed class BridgeCommandMessage : IMessage
     {
         private readonly string _json;
 
-        public ExternalCorrectionCommandMessage(ExternalCorrectionEnvelope envelope)
+        public BridgeCommandMessage(BridgeEnvelope envelope)
         {
             _json = envelope.ToJson();
         }
@@ -205,9 +205,9 @@ namespace MLAstroRPA.Broker
         public Guid MessageId => Guid.NewGuid();
         public DateTimeOffset? Expiration => null;
         public Guid? CorrelationId => null;
-        public int Version => TppaBrokerContract.InterfaceVersion;
+        public int Version => BridgeContract.InterfaceVersion;
         public IDictionary<string, object> CustomHeaders => new Dictionary<string, object>();
-        public string Topic => TppaBrokerContract.CommandTopic;
+        public string Topic => BridgeContract.CommandTopic;
         public object Content => _json;
 
         private static Guid ResolvePluginId()
@@ -217,11 +217,11 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Broker message published on the TPPA -&gt; controller topic (used by the simulator).</summary>
-    public sealed class ExternalCorrectionEventMessage : IMessage
+    public sealed class BridgeEventMessage : IMessage
     {
         private readonly string _json;
 
-        public ExternalCorrectionEventMessage(ExternalCorrectionEnvelope envelope)
+        public BridgeEventMessage(BridgeEnvelope envelope)
         {
             _json = envelope.ToJson();
         }
@@ -232,9 +232,9 @@ namespace MLAstroRPA.Broker
         public Guid MessageId => Guid.NewGuid();
         public DateTimeOffset? Expiration => null;
         public Guid? CorrelationId => null;
-        public int Version => TppaBrokerContract.InterfaceVersion;
+        public int Version => BridgeContract.InterfaceVersion;
         public IDictionary<string, object> CustomHeaders => new Dictionary<string, object>();
-        public string Topic => TppaBrokerContract.EventTopic;
+        public string Topic => BridgeContract.EventTopic;
         public object Content => _json;
 
         private static Guid ResolvePluginId()

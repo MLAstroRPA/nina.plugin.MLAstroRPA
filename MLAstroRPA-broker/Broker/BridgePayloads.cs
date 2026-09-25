@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace MLAstroRPA.Broker
 {
@@ -6,7 +6,7 @@ namespace MLAstroRPA.Broker
     /// Capabilities published by TPPA in reply to our announcement. Every tunable value used by this
     /// controller is read from here: nothing about the TPPA side is hard coded.
     /// </summary>
-    public sealed class TppaCapabilities
+    public sealed class BridgeCapabilities
     {
         public string Controller { get; set; }
         public string TppaVersion { get; set; }
@@ -56,7 +56,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>One polar-error sample published by TPPA.</summary>
-    public sealed class TppaMeasurement
+    public sealed class BridgeMeasurement
     {
         public string MeasurementId { get; set; }
         public string SessionId { get; set; }
@@ -75,39 +75,39 @@ namespace MLAstroRPA.Broker
         public bool ContinuousEstimation { get; set; }
         public DateTimeOffset TimestampUtc { get; set; }
 
-        public bool IsUsable => string.Equals(Status, TppaMeasurementStatus.Valid, StringComparison.OrdinalIgnoreCase);
+        public bool IsUsable => string.Equals(Status, BridgeMeasurementStatus.Valid, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Correction direction derived from the signed error, because TPPA publishes the arcminutes
         /// only: a positive azimuth error always means "move left", a negative one "move right".
         /// </summary>
-        public ExternalAzimuthDirection AzimuthDirectionValue =>
-            AzimuthErrorArcMin > 0 ? ExternalAzimuthDirection.Left
-            : AzimuthErrorArcMin < 0 ? ExternalAzimuthDirection.Right
-            : ExternalAzimuthDirection.None;
+        public BridgeAzimuthDirection AzimuthDirectionValue =>
+            AzimuthErrorArcMin > 0 ? BridgeAzimuthDirection.Left
+            : AzimuthErrorArcMin < 0 ? BridgeAzimuthDirection.Right
+            : BridgeAzimuthDirection.None;
 
         /// <summary>
         /// Altitude direction derived from the signed error and the hemisphere: a positive error means
         /// "move down" in the northern hemisphere and "up" in the southern one.
         /// </summary>
-        public ExternalAltitudeDirection AltitudeDirectionValue =>
-            AltitudeErrorArcMin > 0 ? (Northern ? ExternalAltitudeDirection.Down : ExternalAltitudeDirection.Up)
-            : AltitudeErrorArcMin < 0 ? (Northern ? ExternalAltitudeDirection.Up : ExternalAltitudeDirection.Down)
-            : ExternalAltitudeDirection.None;
+        public BridgeAltitudeDirection AltitudeDirectionValue =>
+            AltitudeErrorArcMin > 0 ? (Northern ? BridgeAltitudeDirection.Down : BridgeAltitudeDirection.Up)
+            : AltitudeErrorArcMin < 0 ? (Northern ? BridgeAltitudeDirection.Up : BridgeAltitudeDirection.Down)
+            : BridgeAltitudeDirection.None;
     }
 
     /// <summary>
     /// Payload of <c>PauseRequested</c>: the operator paused or resumed the run in TPPA. While paused we
     /// must not start a move and have to stop one that is in progress.
     /// </summary>
-    public sealed class TppaPauseRequest
+    public sealed class BridgePauseRequest
     {
         public bool Paused { get; set; }
         public string Reason { get; set; }
     }
 
     /// <summary>Payload of <c>BeginAdjustment</c>: we want to hold the capture for a move sequence.</summary>
-    public sealed class TppaAdjustmentRequest
+    public sealed class BridgeAdjustmentRequest
     {
         public string MeasurementId { get; set; }
         public double? PlannedAzimuthArcMin { get; set; }
@@ -116,7 +116,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>AdjustmentGranted</c>: TPPA handed us a capture window.</summary>
-    public sealed class TppaAdjustmentGrant
+    public sealed class BridgeAdjustmentGrant
     {
         public string WindowId { get; set; }
         public string MeasurementId { get; set; }
@@ -126,7 +126,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>RequestMeasurement</c>: we want TPPA to take a new measurement.</summary>
-    public sealed class TppaMeasurementRequest
+    public sealed class BridgeMeasurementRequest
     {
         public string WindowId { get; set; }
         public bool StationaryAndSettled { get; set; }
@@ -134,7 +134,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>RequestCompletion</c>: we believe the alignment is finished.</summary>
-    public sealed class TppaCompletionRequest
+    public sealed class BridgeCompletionRequest
     {
         public string WindowId { get; set; }
         public string Reason { get; set; }
@@ -142,7 +142,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>KeepAlive</c>: proves we are still alive while holding a window.</summary>
-    public sealed class TppaKeepAlive
+    public sealed class BridgeKeepAlive
     {
         public string WindowId { get; set; }
         public string State { get; set; }
@@ -150,7 +150,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>SessionState</c> (TPPA heartbeat and state changes).</summary>
-    public sealed class TppaSessionState
+    public sealed class BridgeSessionState
     {
         public string State { get; set; }
         public string Reason { get; set; }
@@ -163,7 +163,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of <c>StopRequested</c>: TPPA wants us to stop and park.</summary>
-    public sealed class TppaStopRequest
+    public sealed class BridgeStopRequest
     {
         public string Reason { get; set; }
         public int AckTimeoutMs { get; set; }
@@ -193,7 +193,7 @@ namespace MLAstroRPA.Broker
     }
 
     /// <summary>Payload of the final <c>SessionEnded</c> message.</summary>
-    public sealed class TppaSessionEnded
+    public sealed class BridgeSessionEnded
     {
         public string Reason { get; set; }
         public bool Achieved { get; set; }

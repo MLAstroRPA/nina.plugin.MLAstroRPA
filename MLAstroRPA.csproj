@@ -38,10 +38,10 @@
     <Description>MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware:
 CONTROL / CONNECTION / CONFIGURATION options tabs, header bar and the MLAstro docking panel.</Description>
     <Copyright>Copyright © 2021-2026</Copyright>
-    <Version>2.2.2.0</Version>
-    <AssemblyVersion>2.2.2.0</AssemblyVersion>
-    <FileVersion>2.2.2.0</FileVersion>
-    <InformationalVersion>2.2.2.0</InformationalVersion>
+    <Version>2.3.0.0</Version>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
+    <FileVersion>2.3.0.0</FileVersion>
+    <InformationalVersion>2.3.0.0</InformationalVersion>
 
     <!-- CS0618: NINA exposes obsolete RelayCommand/AsyncCommand contracts that the plugin uses
          deliberately. NU1701: older packages (ToastNotifications/FreeImage) restored for net8.0.

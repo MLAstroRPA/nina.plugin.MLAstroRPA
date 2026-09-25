@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,7 +17,7 @@ namespace MLAstroRPA.Broker
     /// session because of the measured error alone - TPPA owns the session lifecycle and only asks for
     /// a move or reports state.
     /// </summary>
-    public sealed class ExternalCorrectionRunner : IDisposable
+    public sealed class BridgeRunner : IDisposable
     {
         /// <summary>How long we wait for TPPA to grant a capture window after asking for it.</summary>
         private const int WindowGrantTimeoutMs = 15000;
@@ -39,19 +39,19 @@ namespace MLAstroRPA.Broker
         /// to finish. TPPA counts them itself; this is only the fallback for a build that publishes the
         /// counter without the ready flag.
         /// </summary>
-        private const int TppaConfirmationsToFinish = 2;
+        private const int BridgeConfirmationsToFinish = 2;
 
         /// <summary>
         /// Used when TPPA never reported its heartbeat timings: if nothing at all arrives from TPPA for
         /// this long while a session is open, the session is abandoned instead of running forever.
         /// </summary>
-        private const int TppaSilenceFallbackMs = 30000;
+        private const int BridgeSilenceFallbackMs = 30000;
 
-        private readonly TppaBrokerClient _client;
+        private readonly BridgeClient _client;
         private readonly HardwareAligner _aligner;
         private readonly PluginSettings _settings;
 
-        private readonly ConcurrentQueue<ExternalCorrectionEnvelope> _queue = new ConcurrentQueue<ExternalCorrectionEnvelope>();
+        private readonly ConcurrentQueue<BridgeEnvelope> _queue = new ConcurrentQueue<BridgeEnvelope>();
         private readonly SemaphoreSlim _queueSignal = new SemaphoreSlim(0);
         private readonly object _gate = new object();
         private readonly System.Timers.Timer _keepAliveTimer;
@@ -64,8 +64,8 @@ namespace MLAstroRPA.Broker
 
         private string _sessionId;
         private string _windowId;
-        private TaskCompletionSource<TppaAdjustmentGrant> _windowGrant;
-        private TppaMeasurement _lastMeasurement;
+        private TaskCompletionSource<BridgeAdjustmentGrant> _windowGrant;
+        private BridgeMeasurement _lastMeasurement;
         private double _previousTotalErrorArcMin;
         private int _worseningStreak;
         private long _lastInboundTicks;
@@ -91,7 +91,7 @@ namespace MLAstroRPA.Broker
             get { lock (_gate) { return _stopping; } }
         }
 
-        public ExternalCorrectionRunner(TppaBrokerClient client, HardwareAligner aligner, PluginSettings settings)
+        public BridgeRunner(BridgeClient client, HardwareAligner aligner, PluginSettings settings)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _aligner = aligner ?? throw new ArgumentNullException(nameof(aligner));
@@ -152,17 +152,17 @@ namespace MLAstroRPA.Broker
         /// <summary>Aborts a running session on purpose (user pressed Stop on the MLAstro side).</summary>
         public async Task AbortSessionAsync(string reason)
         {
-            ExternalCorrectionEnvelope sessionEnvelope;
+            BridgeEnvelope sessionEnvelope;
             lock (_gate)
             {
                 sessionEnvelope = _sessionId == null
                     ? null
-                    : ExternalCorrectionEnvelope.Create(TppaBrokerKind.Cancel,
+                    : BridgeEnvelope.Create(BridgeKind.Cancel,
                                                         _sessionId,
                                                         Guid.NewGuid().ToString("N"),
                                                         null,
                                                         0,
-                                                        TppaBrokerContract.TppaRecipient,
+                                                        BridgeContract.BridgeRecipient,
                                                         new ControllerCancelPayload { Reason = reason });
             }
 
@@ -174,7 +174,7 @@ namespace MLAstroRPA.Broker
 
             if (sessionEnvelope != null)
             {
-                await _client.PublishAsync(TppaBrokerKind.Cancel,
+                await _client.PublishAsync(BridgeKind.Cancel,
                                            sessionEnvelope.SessionId,
                                            sessionEnvelope.Payload.ToObject<ControllerCancelPayload>())
                              .ConfigureAwait(false);
@@ -185,7 +185,7 @@ namespace MLAstroRPA.Broker
 
         // ===== inbound =====
 
-        private void OnEnvelopeReceived(object sender, ExternalCorrectionEnvelope envelope)
+        private void OnEnvelopeReceived(object sender, BridgeEnvelope envelope)
         {
             if (envelope == null || !_running) { return; }
 
@@ -195,22 +195,22 @@ namespace MLAstroRPA.Broker
 
             switch (envelope.Kind)
             {
-                case TppaBrokerKind.AdjustmentGranted:
+                case BridgeKind.AdjustmentGranted:
                     HandleAdjustmentGranted(envelope);
                     return;
 
-                case TppaBrokerKind.StopRequested:
+                case BridgeKind.StopRequested:
                     // Answer immediately: the alignment loop may be minutes deep inside a move.
                     _ = HandleStopRequestAsync(envelope);
                     return;
 
-                case TppaBrokerKind.PauseRequested:
+                case BridgeKind.PauseRequested:
                     // Same reason: a pause has to stop the axes while a move is running, so it must not
                     // wait behind the worker queue.
                     _ = HandlePauseRequestAsync(envelope);
                     return;
 
-                case TppaBrokerKind.SessionEnded:
+                case BridgeKind.SessionEnded:
                     CancelSessionInternal();
                     Enqueue(envelope);
                     return;
@@ -221,21 +221,21 @@ namespace MLAstroRPA.Broker
             }
         }
 
-        private void Enqueue(ExternalCorrectionEnvelope envelope)
+        private void Enqueue(BridgeEnvelope envelope)
         {
             _queue.Enqueue(envelope);
             try { _queueSignal.Release(); } catch (SemaphoreFullException) { }
         }
 
-        private void HandleAdjustmentGranted(ExternalCorrectionEnvelope envelope)
+        private void HandleAdjustmentGranted(BridgeEnvelope envelope)
         {
-            TaskCompletionSource<TppaAdjustmentGrant> pending;
+            TaskCompletionSource<BridgeAdjustmentGrant> pending;
             lock (_gate)
             {
                 pending = _windowGrant;
             }
 
-            var grant = envelope.PayloadAs<TppaAdjustmentGrant>();
+            var grant = envelope.PayloadAs<BridgeAdjustmentGrant>();
             if (grant == null) { return; }
 
             lock (_gate)
@@ -247,10 +247,10 @@ namespace MLAstroRPA.Broker
             StartKeepAlive(grant);
         }
 
-        private async Task HandleStopRequestAsync(ExternalCorrectionEnvelope envelope)
+        private async Task HandleStopRequestAsync(BridgeEnvelope envelope)
         {
-            var request = envelope.PayloadAs<TppaStopRequest>();
-            var reason = request?.Reason ?? TppaBrokerReason.UserStop;
+            var request = envelope.PayloadAs<BridgeStopRequest>();
+            var reason = request?.Reason ?? BridgeReason.UserStop;
             Logger.Info($"[MLAstro][Broker] TPPA requested a stop: {reason}.");
 
             // Set before the move is released: AbortPendingMove wakes the worker immediately, and a worker
@@ -259,7 +259,7 @@ namespace MLAstroRPA.Broker
 
             // STOP first, cancel second: the axes must be told to stop even when the session is already
             // going away, and a STOP that is sent after the cancellation can lose the race with it.
-            var stopStatus = TppaHardwareStopStatus.Ok;
+            var stopStatus = BridgeHardwareStopStatus.Ok;
             try
             {
                 _aligner.AbortPendingMove();
@@ -270,18 +270,18 @@ namespace MLAstroRPA.Broker
                 else
                 {
                     Logger.Warning("[MLAstro][Broker] Stop request: no STOP could be sent to the firmware.");
-                    stopStatus = TppaHardwareStopStatus.Unknown;
+                    stopStatus = BridgeHardwareStopStatus.Unknown;
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error($"[MLAstro][Broker] Stop failed: {ex.Message}");
-                stopStatus = TppaHardwareStopStatus.Fault;
+                stopStatus = BridgeHardwareStopStatus.Fault;
             }
 
             CancelSessionInternal();
 
-            await _client.PublishAsync(TppaBrokerKind.Stopped,
+            await _client.PublishAsync(BridgeKind.Stopped,
                                        envelope.SessionId,
                                        new ControllerStoppedPayload { Reason = reason, HardwareStopStatus = stopStatus })
                          .ConfigureAwait(false);
@@ -294,11 +294,11 @@ namespace MLAstroRPA.Broker
         /// really moving - and blocks new moves; a resume asks for the measurement the pause interrupted,
         /// because TPPA is waiting for a request that would otherwise never arrive.
         /// </summary>
-        private async Task HandlePauseRequestAsync(ExternalCorrectionEnvelope envelope)
+        private async Task HandlePauseRequestAsync(BridgeEnvelope envelope)
         {
-            var request = envelope.PayloadAs<TppaPauseRequest>();
+            var request = envelope.PayloadAs<BridgePauseRequest>();
             var paused = request?.Paused == true;
-            var reason = request?.Reason ?? (paused ? TppaBrokerReason.Paused : TppaBrokerReason.Resumed);
+            var reason = request?.Reason ?? (paused ? BridgeReason.Paused : BridgeReason.Resumed);
 
             lock (_gate)
             {
@@ -351,13 +351,13 @@ namespace MLAstroRPA.Broker
 
             if (!needsMeasurement || sessionId == null || !IsSessionRunning) { return; }
 
-            await _client.PublishAsync(TppaBrokerKind.RequestMeasurement,
+            await _client.PublishAsync(BridgeKind.RequestMeasurement,
                                        sessionId,
-                                       new TppaMeasurementRequest
+                                       new BridgeMeasurementRequest
                                        {
                                            WindowId = null,
                                            StationaryAndSettled = true,
-                                           Reason = TppaBrokerReason.Resumed
+                                           Reason = BridgeReason.Resumed
                                        }).ConfigureAwait(false);
         }
 
@@ -382,23 +382,23 @@ namespace MLAstroRPA.Broker
             }
         }
 
-        private async Task HandleEnvelopeAsync(ExternalCorrectionEnvelope envelope)
+        private async Task HandleEnvelopeAsync(BridgeEnvelope envelope)
         {
             switch (envelope.Kind)
             {
-                case TppaBrokerKind.SessionState:
+                case BridgeKind.SessionState:
                     await HandleSessionStateAsync(envelope).ConfigureAwait(false);
                     return;
 
-                case TppaBrokerKind.Measurement:
+                case BridgeKind.Measurement:
                     await HandleMeasurementAsync(envelope).ConfigureAwait(false);
                     return;
 
-                case TppaBrokerKind.SessionEnded:
+                case BridgeKind.SessionEnded:
                     HandleSessionEnded(envelope);
                     return;
 
-                case TppaBrokerKind.Fault:
+                case BridgeKind.Fault:
                     Logger.Warning("[MLAstro][Broker] TPPA reported a fault.");
                     return;
 
@@ -408,20 +408,20 @@ namespace MLAstroRPA.Broker
             }
         }
 
-        private async Task HandleSessionStateAsync(ExternalCorrectionEnvelope envelope)
+        private async Task HandleSessionStateAsync(BridgeEnvelope envelope)
         {
-            var state = envelope.PayloadAs<TppaSessionState>();
+            var state = envelope.PayloadAs<BridgeSessionState>();
             if (state == null) { return; }
 
             Logger.Debug($"[MLAstro][Broker] TPPA session state: {state.State} ({state.Reason}).");
 
-            if (string.Equals(state.State, TppaBrokerState.Preparing, StringComparison.Ordinal))
+            if (string.Equals(state.State, BridgeState.Preparing, StringComparison.Ordinal))
             {
                 await HandleSessionPreparingAsync(envelope.SessionId).ConfigureAwait(false);
                 return;
             }
 
-            if (string.Equals(state.State, TppaBrokerState.Ended, StringComparison.Ordinal))
+            if (string.Equals(state.State, BridgeState.Ended, StringComparison.Ordinal))
             {
                 HandleSessionEnded(envelope);
                 return;
@@ -429,7 +429,7 @@ namespace MLAstroRPA.Broker
 
             SetStatus($"TPPA session: {state.State}");
 
-            if (string.Equals(state.Reason, TppaBrokerReason.SilenceTimeout, StringComparison.Ordinal))
+            if (string.Equals(state.Reason, BridgeReason.SilenceTimeout, StringComparison.Ordinal))
             {
                 Logger.Warning("[MLAstro][Broker] TPPA closed the capture window because the controller went silent.");
                 StopKeepAlive();
@@ -446,19 +446,19 @@ namespace MLAstroRPA.Broker
                 }
             }
 
-            ExternalCorrectionSettings.FromPluginSettings(_settings);
+            BridgeSettings.FromPluginSettings(_settings);
 
             if (!_aligner.IsConnected)
             {
                 Logger.Warning("[MLAstro][Broker] TPPA started a session but the hardware is not connected. Reporting a fault.");
                 SetStatus("Hardware not connected");
-                await _client.PublishAsync(TppaBrokerKind.Fault,
+                await _client.PublishAsync(BridgeKind.Fault,
                                            sessionId,
                                            new ControllerFaultPayload
                                            {
-                                               Reason = TppaBrokerReason.ControllerFault,
+                                               Reason = BridgeReason.ControllerFault,
                                                Detail = "The MLAstro hardware link is not connected.",
-                                               HardwareStopStatus = TppaHardwareStopStatus.Unknown
+                                               HardwareStopStatus = BridgeHardwareStopStatus.Unknown
                                            }).ConfigureAwait(false);
                 return;
             }
@@ -466,12 +466,12 @@ namespace MLAstroRPA.Broker
             ResetSessionState();
             SetStatus("TPPA session: controller ready");
 
-            await _client.PublishAsync(TppaBrokerKind.ControllerReady,
+            await _client.PublishAsync(BridgeKind.ControllerReady,
                                        sessionId,
                                        new ControllerReadyPayload
                                        {
-                                           Controller = TppaBrokerContract.ControllerName,
-                                           ControllerVersion = typeof(ExternalCorrectionRunner).Assembly.GetName().Version?.ToString(),
+                                           Controller = BridgeContract.ControllerName,
+                                           ControllerVersion = typeof(BridgeRunner).Assembly.GetName().Version?.ToString(),
                                            HardwareReady = true,
                                            LinkPath = _aligner.LinkDescription
                                        }).ConfigureAwait(false);
@@ -499,9 +499,9 @@ namespace MLAstroRPA.Broker
             NotifySessionActive(true);
         }
 
-        private void HandleSessionEnded(ExternalCorrectionEnvelope envelope)
+        private void HandleSessionEnded(BridgeEnvelope envelope)
         {
-            var ended = envelope.PayloadAs<TppaSessionEnded>();
+            var ended = envelope.PayloadAs<BridgeSessionEnded>();
             Logger.Info($"[MLAstro][Broker] Session ended. Reason: {ended?.Reason}; achieved: {ended?.Achieved}; " +
                         $"final total error: {ended?.TotalErrorArcMin:0.##}' (tolerance {ended?.ToleranceUsedArcMin:0.##}').");
 
@@ -511,9 +511,9 @@ namespace MLAstroRPA.Broker
                           : $"Session ended ({ended?.Reason ?? "unknown"})");
         }
 
-        private async Task HandleMeasurementAsync(ExternalCorrectionEnvelope envelope)
+        private async Task HandleMeasurementAsync(BridgeEnvelope envelope)
         {
-            var measurement = envelope.PayloadAs<TppaMeasurement>();
+            var measurement = envelope.PayloadAs<BridgeMeasurement>();
             if (measurement == null) { return; }
 
             CancellationToken token;
@@ -557,7 +557,7 @@ namespace MLAstroRPA.Broker
                 {
                     // Fail-safe: stopping is the only safe answer when moving makes things worse - a wrong
                     // reverse flag or a reversed axis would otherwise drive the mount off with every step.
-                    await PublishFaultAndEndAsync(TppaBrokerReason.ControllerFault,
+                    await PublishFaultAndEndAsync(BridgeReason.ControllerFault,
                                                   $"The correction made the polar error worse for {MaxWorseningMeasurements} " +
                                                   "measurements in a row. Check the software reverse direction settings " +
                                                   "(Reverse Azimuth / Altitude) and that the axes really move the way they should.")
@@ -570,9 +570,9 @@ namespace MLAstroRPA.Broker
                 _worseningStreak = 0;
             }
 
-            var settings = ExternalCorrectionSettings.FromPluginSettings(_settings);
+            var settings = BridgeSettings.FromPluginSettings(_settings);
             var warnings = new List<string>();
-            var plan = ExternalCorrectionEngine.CreatePlan(measurement, settings, warnings);
+            var plan = BridgeEngine.CreatePlan(measurement, settings, warnings);
             foreach (var warning in warnings.Where(w => w != null).Distinct())
             {
                 Logger.Warning($"[MLAstro][Broker] {warning}");
@@ -593,7 +593,7 @@ namespace MLAstroRPA.Broker
             await ExecutePlanAsync(measurement, plan, settings, token).ConfigureAwait(false);
         }
 
-        private async Task HandleVerifyOnlyAsync(TppaMeasurement measurement, CancellationToken token)
+        private async Task HandleVerifyOnlyAsync(BridgeMeasurement measurement, CancellationToken token)
         {
             if (measurement.ToleranceReached || measurement.AutoFinishConditionMet)
             {
@@ -602,15 +602,15 @@ namespace MLAstroRPA.Broker
                 // TPPA owns the finish policy: it counts the consecutive solves that are inside the
                 // tolerance and marks the measurement once its own gate is met. The counter in the payload
                 // is only a fallback for a TPPA build that publishes it without the ready flag.
-                if (measurement.AutoFinishConditionMet || measurement.ConsecutiveBelowTolerance >= TppaConfirmationsToFinish)
+                if (measurement.AutoFinishConditionMet || measurement.ConsecutiveBelowTolerance >= BridgeConfirmationsToFinish)
                 {
                     Logger.Info("[MLAstro][Broker] Alignment is within tolerance. Asking TPPA to complete the session.");
-                    await _client.PublishAsync(TppaBrokerKind.RequestCompletion,
+                    await _client.PublishAsync(BridgeKind.RequestCompletion,
                                                SessionId,
-                                               new TppaCompletionRequest
+                                               new BridgeCompletionRequest
                                                {
                                                    WindowId = null,
-                                                   Reason = TppaBrokerReason.CompletionRequested,
+                                                   Reason = BridgeReason.CompletionRequested,
                                                    ConsecutiveBelowTolerance = Math.Max(1, measurement.ConsecutiveBelowTolerance)
                                                }).ConfigureAwait(false);
                     SetStatus("Verifying final alignment");
@@ -624,7 +624,7 @@ namespace MLAstroRPA.Broker
                                $"attempt {_unusableMeasurements}/{MaxUnusableMeasurements}.");
                 if (_unusableMeasurements > MaxUnusableMeasurements)
                 {
-                    await PublishFaultAndEndAsync(TppaBrokerReason.CaptureFailed,
+                    await PublishFaultAndEndAsync(BridgeReason.CaptureFailed,
                                                   $"The polar alignment measurement stayed unusable for {MaxUnusableMeasurements} attempts.")
                                  .ConfigureAwait(false);
                     return;
@@ -635,20 +635,20 @@ namespace MLAstroRPA.Broker
 
             // Ask for a new measurement without moving: either to confirm a passing sample or to recover
             // from an unusable one.
-            await _client.PublishAsync(TppaBrokerKind.RequestMeasurement,
+            await _client.PublishAsync(BridgeKind.RequestMeasurement,
                                        SessionId,
-                                       new TppaMeasurementRequest
+                                       new BridgeMeasurementRequest
                                        {
                                            WindowId = null,
                                            StationaryAndSettled = true,
-                                           Reason = TppaBrokerReason.VerifyOnly
+                                           Reason = BridgeReason.VerifyOnly
                                        }).ConfigureAwait(false);
             SetStatus("Waiting for the next measurement");
         }
 
-        private async Task ExecutePlanAsync(TppaMeasurement measurement,
+        private async Task ExecutePlanAsync(BridgeMeasurement measurement,
                                             CorrectionPlan plan,
-                                            ExternalCorrectionSettings settings,
+                                            BridgeSettings settings,
                                             CancellationToken token)
         {
             _moveCounter++;
@@ -703,7 +703,7 @@ namespace MLAstroRPA.Broker
                     return;
                 }
 
-                await PublishFaultAndEndAsync(TppaBrokerReason.ControllerFault,
+                await PublishFaultAndEndAsync(BridgeReason.ControllerFault,
                                               $"The alignment move {_moveCounter} did not complete on the hardware.")
                              .ConfigureAwait(false);
                 return;
@@ -718,13 +718,13 @@ namespace MLAstroRPA.Broker
 
             if (token.IsCancellationRequested) { return; }
 
-            await _client.PublishAsync(TppaBrokerKind.RequestMeasurement,
+            await _client.PublishAsync(BridgeKind.RequestMeasurement,
                                        SessionId,
-                                       new TppaMeasurementRequest
+                                       new BridgeMeasurementRequest
                                        {
                                            WindowId = windowId,
                                            StationaryAndSettled = true,
-                                           Reason = TppaBrokerReason.StepFinished
+                                           Reason = BridgeReason.StepFinished
                                        }).ConfigureAwait(false);
             SetStatus("Waiting for the next measurement");
         }
@@ -735,7 +735,7 @@ namespace MLAstroRPA.Broker
         /// </summary>
         private bool CancelPendingWindowRequest()
         {
-            TaskCompletionSource<TppaAdjustmentGrant> pending;
+            TaskCompletionSource<BridgeAdjustmentGrant> pending;
             lock (_gate)
             {
                 pending = _windowGrant;
@@ -744,9 +744,9 @@ namespace MLAstroRPA.Broker
             return pending != null && pending.TrySetResult(null);
         }
 
-        private async Task<string> RequestWindowAsync(TppaMeasurement measurement, CorrectionPlan plan, CancellationToken token)
+        private async Task<string> RequestWindowAsync(BridgeMeasurement measurement, CorrectionPlan plan, CancellationToken token)
         {
-            var grant = new TaskCompletionSource<TppaAdjustmentGrant>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var grant = new TaskCompletionSource<BridgeAdjustmentGrant>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_gate)
             {
                 _windowGrant = grant;
@@ -754,9 +754,9 @@ namespace MLAstroRPA.Broker
 
             try
             {
-                await _client.PublishAsync(TppaBrokerKind.BeginAdjustment,
+                await _client.PublishAsync(BridgeKind.BeginAdjustment,
                                            SessionId,
-                                           new TppaAdjustmentRequest
+                                           new BridgeAdjustmentRequest
                                            {
                                                MeasurementId = measurement.MeasurementId,
                                                PlannedAzimuthArcMin = plan.MoveAzimuth ? plan.AzimuthMagnitudeArcMin : (double?)null,
@@ -792,7 +792,7 @@ namespace MLAstroRPA.Broker
 
         // ===== keep-alive =====
 
-        private void StartKeepAlive(TppaAdjustmentGrant grant)
+        private void StartKeepAlive(BridgeAdjustmentGrant grant)
         {
             var heartbeat = _client.Capabilities?.HeartbeatMs ?? 2000;
             // Keep-alive must never depend on the ALIGN call, which can block for a long time.
@@ -818,9 +818,9 @@ namespace MLAstroRPA.Broker
 
             if (windowId == null || sessionId == null) { return; }
 
-            _ = _client.PublishAsync(TppaBrokerKind.KeepAlive,
+            _ = _client.PublishAsync(BridgeKind.KeepAlive,
                                      sessionId,
-                                     new TppaKeepAlive { WindowId = windowId, State = "Adjusting" })
+                                     new BridgeKeepAlive { WindowId = windowId, State = "Adjusting" })
                         .ContinueWith(t => Logger.Error(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
         }
 
@@ -838,7 +838,7 @@ namespace MLAstroRPA.Broker
             var capabilities = _client.Capabilities;
             var silenceLimitMs = capabilities?.SilenceTimeoutMs > 0
                 ? Math.Max(10000, capabilities.SilenceTimeoutMs)
-                : TppaSilenceFallbackMs;
+                : BridgeSilenceFallbackMs;
 
             var silenceMs = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Volatile.Read(ref _lastInboundTicks)).TotalMilliseconds;
             if (silenceMs <= silenceLimitMs) { return; }
@@ -849,7 +849,7 @@ namespace MLAstroRPA.Broker
 
         private async Task AbandonSilentSessionAsync()
         {
-            await AbortSessionAsync(TppaBrokerReason.ExternalLost).ConfigureAwait(false);
+            await AbortSessionAsync(BridgeReason.ExternalLost).ConfigureAwait(false);
             SetStatus("TPPA stopped answering");
         }
 
@@ -911,7 +911,7 @@ namespace MLAstroRPA.Broker
         /// the signature of a correction that runs the wrong way (reversed axis, wrong reverse flag).
         /// Ordinary solve noise stays below the margin and does not count as worse.
         /// </summary>
-        private bool IsCorrectionGettingWorse(TppaMeasurement measurement, double totalErrorArcMin)
+        private bool IsCorrectionGettingWorse(BridgeMeasurement measurement, double totalErrorArcMin)
         {
             if (_previousTotalErrorArcMin <= 0) { return false; }
 
@@ -923,15 +923,15 @@ namespace MLAstroRPA.Broker
         {
             await _aligner.StopAsync().ConfigureAwait(false);
 
-            await _client.PublishAsync(TppaBrokerKind.Fault,
+            await _client.PublishAsync(BridgeKind.Fault,
                                        SessionId,
                                        new ControllerFaultPayload
                                        {
                                            Reason = reason,
                                            Detail = detail,
                                            HardwareStopStatus = _aligner.IsConnected
-                                               ? TppaHardwareStopStatus.Ok
-                                               : TppaHardwareStopStatus.Unknown
+                                               ? BridgeHardwareStopStatus.Ok
+                                               : BridgeHardwareStopStatus.Unknown
                                        }).ConfigureAwait(false);
 
             SetStatus($"Fault: {detail}");

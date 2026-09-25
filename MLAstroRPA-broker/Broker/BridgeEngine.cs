@@ -1,11 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MLAstroRPA.Settings;
 
 namespace MLAstroRPA.Broker
 {
     /// <summary>Which axes a single correction step moves.</summary>
-    public enum ExternalAxisMode
+    public enum BridgeAxisMode
     {
         /// <summary>Move both axes in a single ALIGN command.</summary>
         Both = 0,
@@ -18,9 +18,9 @@ namespace MLAstroRPA.Broker
     /// Correction strategy of the controller. These values belong to MLAstro: TPPA only publishes the
     /// measured error, the tolerance and the direction, and never decides how much to move.
     /// </summary>
-    public sealed class ExternalCorrectionSettings
+    public sealed class BridgeSettings
     {
-        public ExternalAxisMode AxisMode { get; set; } = ExternalAxisMode.Both;
+        public BridgeAxisMode AxisMode { get; set; } = BridgeAxisMode.Both;
         public double SafetyFactor { get; set; } = 0.75;
         public double MaxStepArcMin { get; set; } = 60;
         public bool OvershootEnabled { get; set; }
@@ -31,11 +31,11 @@ namespace MLAstroRPA.Broker
         public bool ReverseAzimuth { get; set; }
         public bool ReverseAltitude { get; set; }
 
-        public static ExternalCorrectionSettings FromPluginSettings(PluginSettings settings)
+        public static BridgeSettings FromPluginSettings(PluginSettings settings)
         {
-            if (settings == null) { return new ExternalCorrectionSettings(); }
+            if (settings == null) { return new BridgeSettings(); }
 
-            return new ExternalCorrectionSettings
+            return new BridgeSettings
             {
                 AxisMode = settings.CorrectionAxisMode,
                 SafetyFactor = Clamp(settings.CorrectionSafetyFactor, 0.05, 1.0),
@@ -86,7 +86,7 @@ namespace MLAstroRPA.Broker
     /// sign: it is taken from the direction TPPA published, which is the same direction it shows to the
     /// user in its own interface.
     /// </summary>
-    public static class ExternalCorrectionEngine
+    public static class BridgeEngine
     {
         /// <summary>
         /// An overshoot has to be larger than the tolerance. At the top of the overshoot the measured
@@ -98,11 +98,11 @@ namespace MLAstroRPA.Broker
             return toleranceArcMin <= 0 || overshootArcMin > toleranceArcMin;
         }
 
-        public static CorrectionPlan CreatePlan(TppaMeasurement measurement,
-                                               ExternalCorrectionSettings settings,
+        public static CorrectionPlan CreatePlan(BridgeMeasurement measurement,
+                                               BridgeSettings settings,
                                                IList<string> warnings = null)
         {
-            settings ??= new ExternalCorrectionSettings();
+            settings ??= new BridgeSettings();
             var plan = new CorrectionPlan
             {
                 ToleranceArcMin = measurement?.ToleranceArcMin > 0
@@ -136,7 +136,7 @@ namespace MLAstroRPA.Broker
             var azimuthError = Math.Abs(measurement.AzimuthErrorArcMin);
             var altitudeError = Math.Abs(measurement.AltitudeErrorArcMin);
 
-            if (settings.AxisMode == ExternalAxisMode.Auto && azimuthError > 0 && altitudeError > 0)
+            if (settings.AxisMode == BridgeAxisMode.Auto && azimuthError > 0 && altitudeError > 0)
             {
                 if (azimuthError >= altitudeError) { altitudeError = 0; } else { azimuthError = 0; }
             }
@@ -144,8 +144,8 @@ namespace MLAstroRPA.Broker
             var azimuthDirection = measurement.AzimuthDirectionValue;
             var altitudeDirection = measurement.AltitudeDirectionValue;
 
-            var moveAzimuth = azimuthError > 0 && azimuthDirection != ExternalAzimuthDirection.None;
-            var moveAltitude = altitudeError > 0 && altitudeDirection != ExternalAltitudeDirection.None;
+            var moveAzimuth = azimuthError > 0 && azimuthDirection != BridgeAzimuthDirection.None;
+            var moveAltitude = altitudeError > 0 && altitudeDirection != BridgeAltitudeDirection.None;
 
             var azimuthMagnitude = moveAzimuth ? Step(azimuthError, settings) : 0;
 
@@ -153,7 +153,7 @@ namespace MLAstroRPA.Broker
             // MLAstro TPPA plugin always did: the axis goes the FULL error plus the overshoot past the
             // target, and the next measurement corrects whatever is left. There is no back-off move - the
             // extra travel is what takes the play out of the axis, a deliberate return would put it back.
-            var movesUp = altitudeDirection == ExternalAltitudeDirection.Up;
+            var movesUp = altitudeDirection == BridgeAltitudeDirection.Up;
             var overshootAltitude = settings.OvershootEnabled
                                     && (movesUp ? settings.OvershootUpEnabled : settings.OvershootDownEnabled);
             var altitudeOvershootArcMin = movesUp ? settings.OvershootUpArcMin : settings.OvershootDownArcMin;
@@ -172,8 +172,8 @@ namespace MLAstroRPA.Broker
             plan.MoveAltitude = moveAltitude;
             plan.AzimuthMagnitudeArcMin = Math.Round(azimuthMagnitude, 3);
             plan.AltitudeMagnitudeArcMin = Math.Round(altitudeMagnitude, 3);
-            plan.AzimuthRight = azimuthDirection == ExternalAzimuthDirection.Right;
-            plan.AltitudeUp = altitudeDirection == ExternalAltitudeDirection.Up;
+            plan.AzimuthRight = azimuthDirection == BridgeAzimuthDirection.Right;
+            plan.AltitudeUp = altitudeDirection == BridgeAltitudeDirection.Up;
 
             if (settings.ReverseAzimuth) { plan.AzimuthRight = !plan.AzimuthRight; }
             if (settings.ReverseAltitude) { plan.AltitudeUp = !plan.AltitudeUp; }
@@ -188,7 +188,7 @@ namespace MLAstroRPA.Broker
             return plan;
         }
 
-        private static double Step(double errorArcMin, ExternalCorrectionSettings settings)
+        private static double Step(double errorArcMin, BridgeSettings settings)
         {
             var requested = errorArcMin * settings.SafetyFactor;
             return Math.Min(requested, settings.MaxStepArcMin);

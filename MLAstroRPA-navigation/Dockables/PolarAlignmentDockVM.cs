@@ -1421,9 +1421,9 @@ namespace MLAstroRPA.Dockables
         {
             StopJogMovement();
             SendCommand("STOP:1\n");
-            // Nếu TPPA đang giữ quyền điều khiển (external control) thì báo TPPA dừng PA ngay.
+            // If TPPA currently holds external control, tell it to stop the polar alignment right away.
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro STOP pressed");
-            // Phiên qua broker: báo controller để nó gửi Cancel cho TPPA ngay.
+            // Broker session: tell the controller so it sends the cancel to TPPA right away.
             ManualStopRequested?.Invoke(this, EventArgs.Empty);
         }
 
@@ -1435,7 +1435,7 @@ namespace MLAstroRPA.Dockables
             StopJogMovement();
             SendCommand("ESTOP:1\n");
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro FORCE-STOP pressed");
-            // Phiên qua broker: FORCE-STOP cũng phải kết thúc phiên TPPA.
+            // Broker session: FORCE-STOP has to end the TPPA session as well.
             ManualStopRequested?.Invoke(this, EventArgs.Empty);
         }
 

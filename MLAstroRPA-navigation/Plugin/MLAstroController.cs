@@ -421,17 +421,17 @@ namespace MLAstroRPA.Plugin
         // ===== External correction qua broker TPPA (tab SOFTWARE SETTING) =====
 
         private readonly IMessageBroker _messageBroker;
-        private TppaBrokerClient? _tppaBrokerClient;
+        private BridgeClient? _bridgeClient;
         private HardwareAligner? _hardwareAligner;
-        private ExternalCorrectionRunner? _externalRunner;
+        private BridgeRunner? _bridgeRunner;
         private const int BrokerLogMaxEntries = 50;
 
-        /// <summary>Dòng log ngắn của tích hợp broker (mới nhất lên trên) để kiểm tra không cần mở log NINA.</summary>
+        /// <summary>Short broker log (newest first) so the integration can be checked without opening the NINA log.</summary>
         public ObservableCollection<BrokerLogEntry> BrokerLog { get; } = new();
 
         /// <summary>
-        /// Switch bắt tay với TPPA. ON = announce capabilities + subscribe event + chạy runner.
-        /// OFF = huỷ subscribe, bỏ qua mọi event; nếu đang có phiên thì gửi Cancel trước khi tắt.
+        /// Switch that handshakes with TPPA. ON = announce capabilities + subscribe to the events + run the runner.
+        /// OFF = drop the subscriptions and ignore every event; a running session is cancelled first.
         /// </summary>
         public bool TppaBrokerEnabled
         {
@@ -443,11 +443,11 @@ namespace MLAstroRPA.Plugin
                 if (value)
                 {
                     Settings.TppaBrokerEnabled = true;
-                    StartExternalCorrection();
+                    StartBridge();
                 }
                 else
                 {
-                    StopExternalCorrection();
+                    StopBridge();
                     Settings.TppaBrokerEnabled = false;
                 }
 
@@ -456,13 +456,13 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        /// <summary>Trạng thái bắt tay với TPPA: off / searching / vX ready / incompatible.</summary>
-        public string TppaBrokerStatusText => _tppaBrokerClient?.StatusText ?? "TPPA: off";
+        /// <summary>Handshake state with TPPA: off / searching / vX ready / incompatible.</summary>
+        public string TppaBrokerStatusText => _bridgeClient?.StatusText ?? "TPPA: off";
 
-        /// <summary>Trạng thái vòng sửa hiện tại phía MLAstro.</summary>
-        public string ExternalCorrectionStatusText => _externalRunner?.StatusText ?? "Idle";
+        /// <summary>What the MLAstro side of the correction loop is doing right now.</summary>
+        public string BridgeStatusText => _bridgeRunner?.StatusText ?? "Idle";
 
-        public ExternalAxisMode CorrectionAxisMode
+        public BridgeAxisMode CorrectionAxisMode
         {
             get => Settings.CorrectionAxisMode;
             set
@@ -473,13 +473,13 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        /// <summary>0 = Both (một lệnh ALIGN 2 trục), 1 = Auto (chỉ trục sai số lớn hơn).</summary>
+        /// <summary>0 = Both (one ALIGN command for both axes), 1 = Auto (only the axis with the larger error).</summary>
         public int CorrectionAxisModeIndex
         {
-            get => Settings.CorrectionAxisMode == ExternalAxisMode.Auto ? 1 : 0;
+            get => Settings.CorrectionAxisMode == BridgeAxisMode.Auto ? 1 : 0;
             set
             {
-                CorrectionAxisMode = value == 1 ? ExternalAxisMode.Auto : ExternalAxisMode.Both;
+                CorrectionAxisMode = value == 1 ? BridgeAxisMode.Auto : BridgeAxisMode.Both;
             }
         }
 
@@ -573,13 +573,13 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        /// <summary>Cảnh báo cấu hình overshoot (chỉ hiện khi overshoot đang bật và không hợp lệ).</summary>
+        /// <summary>Overshoot configuration warning (only shown while overshoot is on and the values are not usable).</summary>
         public string OvershootWarningText
         {
             get
             {
                 if (!CorrectionOvershootEnabled) { return string.Empty; }
-                var tolerance = _tppaBrokerClient?.Capabilities?.ToleranceArcMin ?? 0;
+                var tolerance = _bridgeClient?.Capabilities?.ToleranceArcMin ?? 0;
                 if (tolerance <= 0) { return string.Empty; }
 
                 var smallest = Math.Min(
@@ -587,9 +587,9 @@ namespace MLAstroRPA.Plugin
                     CorrectionOvershootDownArcMin > 0 ? CorrectionOvershootDownArcMin : double.MaxValue);
                 if (smallest == double.MaxValue) { return string.Empty; }
 
-                return ExternalCorrectionEngine.IsOvershootAboveTolerance(smallest, tolerance)
+                return BridgeEngine.IsOvershootAboveTolerance(smallest, tolerance)
                     ? string.Empty
-                    : ExternalCorrectionEngine.OvershootWarning;
+                    : BridgeEngine.OvershootWarning;
             }
         }
 
@@ -602,37 +602,38 @@ namespace MLAstroRPA.Plugin
         /// </summary>
         private void OnManualStopRequested(object? sender, EventArgs e)
         {
-            AbortExternalSessionForHardware(TppaBrokerReason.UserStop, "STOP on the MLAstro dock");
+            AbortSessionForHardware(BridgeReason.UserStop, "STOP on the MLAstro dock");
         }
 
         /// <summary>
         /// Ends a running TPPA session because the hardware side stopped on its own - a manual stop or a
         /// link that dropped - so TPPA does not keep waiting for a controller that cannot move anymore.
         /// </summary>
-        private void AbortExternalSessionForHardware(string reason, string detail)
+        private void AbortSessionForHardware(string reason, string detail)
         {
-            var runner = _externalRunner;
+            var runner = _bridgeRunner;
             if (runner == null || !runner.IsSessionRunning) { return; }
 
             AppendBrokerLog($"{detail}: asking TPPA to cancel the session ({reason}).");
             _ = runner.AbortSessionAsync(reason);
         }
 
-        private void InitializeExternalCorrection(IMessageBroker messageBroker)
+        private void InitializeBridge(IMessageBroker messageBroker)
         {
             if (messageBroker == null) { return; }
 
-            _tppaBrokerClient = new TppaBrokerClient(messageBroker, Settings);
+            _bridgeClient = new BridgeClient(messageBroker, Settings);
             _hardwareAligner = new HardwareAligner(_serialConnectionService);
-            _externalRunner = new ExternalCorrectionRunner(_tppaBrokerClient, _hardwareAligner, Settings);
+            _bridgeRunner = new BridgeRunner(_bridgeClient, _hardwareAligner, Settings);
 
-            _tppaBrokerClient.StatusChanged += (_, __) => RaiseBrokerStatus();
-            _tppaBrokerClient.Traffic += (_, e) => AppendBrokerLog(e.Direction, e.Detail);
-            _externalRunner.StatusChanged += (_, __) => RaiseBrokerStatus(appendLog: true);
-            // Trong phiên TPPA, chỉ controller ngoài được quay motor: khoá điều khiển tay/auto của dock.
-            _externalRunner.SessionActiveChanged += (_, active) => SetDockAutomatedAdjustment(active);
-            // STOP / FORCE STOP trên dock cũng phải kết thúc phiên TPPA: TPPA không được chờ một
-            // controller vừa dừng trục bằng tay.
+            _bridgeClient.StatusChanged += (_, __) => RaiseBrokerStatus();
+            _bridgeClient.Traffic += (_, e) => AppendBrokerLog(e.Direction, e.Detail);
+            _bridgeRunner.StatusChanged += (_, __) => RaiseBrokerStatus(appendLog: true);
+            // While a TPPA session owns the axes only the external controller may turn the motors: the manual
+            // and automatic dock controls are locked.
+            _bridgeRunner.SessionActiveChanged += (_, active) => SetDockAutomatedAdjustment(active);
+            // STOP / FORCE STOP on the dock also has to end the TPPA session: TPPA must not keep waiting for
+            // a controller that just stopped the axes by hand.
             if (_polarAlignmentDockVM != null)
             {
                 _polarAlignmentDockVM.ManualStopRequested += OnManualStopRequested;
@@ -640,7 +641,7 @@ namespace MLAstroRPA.Plugin
 
             if (Settings.TppaBrokerEnabled)
             {
-                StartExternalCorrection();
+                StartBridge();
             }
             else
             {
@@ -648,17 +649,17 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        private void StartExternalCorrection()
+        private void StartBridge()
         {
-            _externalRunner?.Start();
-            _tppaBrokerClient?.Start();
+            _bridgeRunner?.Start();
+            _bridgeClient?.Start();
             AppendBrokerLog("Broker on: announcing capabilities to the polar alignment plugin.");
             RaiseBrokerStatus();
         }
 
         /// <summary>
-        /// Khoá / mở khoá điều khiển tay của dock khi phiên TPPA bắt đầu / kết thúc. Chạy trên UI thread
-        /// vì cờ này điều khiển enable/disable của các nút trên options page.
+        /// Locks / unlocks the manual dock controls while a TPPA session starts and ends. Runs on the UI
+        /// thread because this flag drives the enable state of the buttons on the options page.
         /// </summary>
         private void SetDockAutomatedAdjustment(bool active)
         {
@@ -690,16 +691,16 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        private void StopExternalCorrection()
+        private void StopBridge()
         {
             try
             {
-                if (_externalRunner?.IsSessionRunning == true)
+                if (_bridgeRunner?.IsSessionRunning == true)
                 {
-                    // Cancel trước, tắt broker sau: TPPA phải nhận được lý do thay vì chỉ thấy
-                    // controller im lặng rồi tự hết hạn.
+                    // Cancel first, switch the broker off second: TPPA has to receive a reason instead of
+                    // only seeing a silent controller that runs into its own timeout.
                     AppendBrokerLog("Broker off: asking TPPA to cancel the session (BrokerDisabled).");
-                    _externalRunner.AbortSessionAsync(TppaBrokerReason.BrokerDisabled).GetAwaiter().GetResult();
+                    _bridgeRunner.AbortSessionAsync(BridgeReason.BrokerDisabled).GetAwaiter().GetResult();
                 }
             }
             catch (Exception ex)
@@ -707,8 +708,8 @@ namespace MLAstroRPA.Plugin
                 Logger.Error(ex);
             }
 
-            _externalRunner?.Stop();
-            _tppaBrokerClient?.Stop();
+            _bridgeRunner?.Stop();
+            _bridgeClient?.Stop();
             AppendBrokerLog("Broker off.");
             RaiseBrokerStatus();
         }
@@ -721,12 +722,12 @@ namespace MLAstroRPA.Plugin
                 void update()
                 {
                     OnPropertyChanged(nameof(TppaBrokerStatusText));
-                    OnPropertyChanged(nameof(ExternalCorrectionStatusText));
+                    OnPropertyChanged(nameof(BridgeStatusText));
                     OnPropertyChanged(nameof(OvershootWarningText));
                     OnPropertyChanged(nameof(OvershootWarningVisibility));
                     if (appendLog)
                     {
-                        AppendBrokerLog(_externalRunner?.StatusText ?? string.Empty);
+                        AppendBrokerLog(_bridgeRunner?.StatusText ?? string.Empty);
                     }
                 }
 
@@ -748,8 +749,8 @@ namespace MLAstroRPA.Plugin
         private void AppendBrokerLog(string message) => AppendBrokerLog(BrokerLogDirection.Notice, message);
 
         /// <summary>
-        /// Thêm một dòng vào Broker log. Các dòng đến từ luồng broker được marshal sang UI thread vì
-        /// collection này được bind vào options page.
+        /// Adds one line to the broker log. Lines that arrive from the broker thread are marshalled to the
+        /// UI thread because this collection is bound to the options page.
         /// </summary>
         private void AppendBrokerLog(BrokerLogDirection direction, string message)
         {
@@ -811,18 +812,21 @@ namespace MLAstroRPA.Plugin
                 OnPropertyChanged(nameof(IsExternalUnlocked));
                 OnPropertyChanged(nameof(IsPauseQuery));
             });
-            // Theo dõi PauseQueryGlobal đổi (TPPA mượn/trả cổng hay gạt tay) để checkbox hiện đúng trạng thái.
+            // Watch PauseQueryGlobal so the checkbox always shows the real state: TPPA borrows the port or
+            // the operator toggles it by hand.
             _onPauseQueryChanged = paused => OnPropertyChanged(nameof(IsPauseQuery));
             SerialConnectionService.PauseQueryChanged += _onPauseQueryChanged;
 
-            // Transport wireless đổi trạng thái ở luồng nền → marshal về UI thread trước khi báo binding.
+            // The wireless transport changes state on a background thread, so marshal to the UI thread
+            // before the bindings are notified.
             _webSocketService.PropertyChanged += (_, __) =>
             {
-                // Mất link wireless giữa phiên TPPA: giống mất link serial, trục không còn điều khiển
-                // được nữa nên phải báo TPPA cancel thay vì để nó chờ measurement tiếp theo.
+                // Wireless link lost during a TPPA session: like a lost serial link the axes cannot be
+                // driven any more, so TPPA is asked to cancel instead of waiting for a measurement that
+                // will never arrive.
                 if (!_webSocketService.IsConnected)
                 {
-                    AbortExternalSessionForHardware(TppaBrokerReason.FirmwareDisconnected, "Firmware link lost (wireless)");
+                    AbortSessionForHardware(BridgeReason.FirmwareDisconnected, "Firmware link lost (wireless)");
                 }
 
                 try
@@ -835,8 +839,8 @@ namespace MLAstroRPA.Plugin
             };
             RefreshComPorts();
 
-            // Tích hợp broker với TPPA: announce capabilities + chạy vòng sửa tự động (nếu switch ON).
-            InitializeExternalCorrection(messageBroker);
+            // TPPA broker integration: announce capabilities + run the correction loop (when the switch is ON).
+            InitializeBridge(messageBroker);
 
             // Hook into application exit to ensure cleanup - must run on UI thread
             if (Application.Current != null)
@@ -1649,11 +1653,11 @@ namespace MLAstroRPA.Plugin
             if (string.IsNullOrEmpty(e.PropertyName)
                 || e.PropertyName == nameof(SerialConnectionService.IsConnected))
             {
-                // Mất kết nối firmware giữa phiên TPPA: ta không còn điều khiển được trục nữa, nên
-                // báo TPPA cancel thay vì để nó chờ thêm measurement.
+                // Firmware link lost during a TPPA session: the axes can no longer be driven, so TPPA is
+                // asked to cancel instead of waiting for another measurement.
                 if (!_serialConnectionService.IsConnected)
                 {
-                    AbortExternalSessionForHardware(TppaBrokerReason.FirmwareDisconnected, "Firmware link lost");
+                    AbortSessionForHardware(BridgeReason.FirmwareDisconnected, "Firmware link lost");
                 }
             }
 
@@ -1756,12 +1760,12 @@ namespace MLAstroRPA.Plugin
             {
                 Logger.Info("[MLAstro] MLAstroController disposing...");
 
-                // Tích hợp broker: ngắt phiên đang chạy, huỷ subscribe rồi giải phóng.
+                // Broker integration: end a running session, drop the subscriptions and release everything.
                 try
                 {
-                    _externalRunner?.Dispose();
+                    _bridgeRunner?.Dispose();
                     _hardwareAligner?.Dispose();
-                    _tppaBrokerClient?.Dispose();
+                    _bridgeClient?.Dispose();
                 }
                 catch (Exception ex)
                 {

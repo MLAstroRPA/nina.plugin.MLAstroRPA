@@ -1,4 +1,4 @@
-using NINA.Profile;
+﻿using NINA.Profile;
 using NINA.Profile.Interfaces;
 using System;
 using System.ComponentModel;
@@ -459,11 +459,12 @@ namespace MLAstroRPA.Settings
             set => SetString(value);
         }
 
-        // ===== External correction qua broker TPPA (tab SOFTWARE SETTING) =====
+        // ===== External correction over the TPPA broker (SOFTWARE SETTING tab) =====
 
         /// <summary>
-        /// Bật/tắt toàn bộ tích hợp broker với plugin Three Point Polar Alignment: tự announce
-        /// capabilities, nhận sai số, điều khiển motor và báo kết thúc phiên.
+        /// Turns the whole broker integration with the Three Point Polar Alignment plugin on or off: it
+        /// announces the capabilities, receives the measured errors, drives the motors and reports the end
+        /// of the session.
         /// </summary>
         public bool TppaBrokerEnabled
         {
@@ -471,32 +472,32 @@ namespace MLAstroRPA.Settings
             set => SetBool(value);
         }
 
-        /// <summary>Chiến lược sửa: Both = 1 lệnh ALIGN 2 trục, Auto = chỉ trục có sai số lớn hơn.</summary>
-        public ExternalAxisMode CorrectionAxisMode
+        /// <summary>Correction strategy: Both = one ALIGN command for both axes, Auto = only the axis with the larger error.</summary>
+        public BridgeAxisMode CorrectionAxisMode
         {
             get
             {
-                var value = GetString(nameof(CorrectionAxisMode), ExternalAxisMode.Both.ToString());
-                return Enum.TryParse<ExternalAxisMode>(value, true, out var mode) ? mode : ExternalAxisMode.Both;
+                var value = GetString(nameof(CorrectionAxisMode), BridgeAxisMode.Both.ToString());
+                return Enum.TryParse<BridgeAxisMode>(value, true, out var mode) ? mode : BridgeAxisMode.Both;
             }
             set => SetString(value.ToString());
         }
 
-        /// <summary>Hệ số an toàn nhân vào sai số đo được trước khi gửi lệnh (1.0 = sửa đúng bằng sai số).</summary>
+        /// <summary>Safety factor multiplied into the measured error before the move is sent (1.0 = correct exactly the measured error).</summary>
         public double CorrectionSafetyFactor
         {
             get => GetDouble(nameof(CorrectionSafetyFactor), 0.75);
             set => SetDouble(value);
         }
 
-        /// <summary>Giới hạn biên độ mỗi lần sửa (arcmin) để một sai số lớn không gây cú quay nguy hiểm.</summary>
+        /// <summary>Upper limit for a single correction step (arcmin), so one large error cannot produce a dangerous slew.</summary>
         public double CorrectionMaxStepArcMin
         {
             get => GetDouble(nameof(CorrectionMaxStepArcMin), 60);
             set => SetDouble(value);
         }
 
-        /// <summary>Bật overshoot: cố tình vượt target một đoạn rồi quay lại để triệt backlash.</summary>
+        /// <summary>Overshoot: deliberately travel past the target so the next measurement corrects the remainder.</summary>
         public bool CorrectionOvershootEnabled
         {
             get => GetBool(nameof(CorrectionOvershootEnabled), false);
@@ -516,7 +517,7 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Bật overshoot khi trục Altitude phải đi LÊN. Chỉ có hiệu lực khi CorrectionOvershootEnabled bật.
+        /// Turns the overshoot on when the altitude axis has to move UP. Only effective while CorrectionOvershootEnabled is on.
         /// </summary>
         public bool CorrectionOvershootUpEnabled
         {
@@ -525,7 +526,7 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Bật overshoot khi trục Altitude phải đi XUỐNG. Chỉ có hiệu lực khi CorrectionOvershootEnabled bật.
+        /// Turns the overshoot on when the altitude axis has to move DOWN. Only effective while CorrectionOvershootEnabled is on.
         /// </summary>
         public bool CorrectionOvershootDownEnabled
         {
@@ -534,9 +535,9 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Đảo dấu (software) cho trục Azimuth: lật hướng các lệnh dịch chuyển do plugin gửi trong
-        /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
-        /// trong tab HARDWARE SETTING (đảo chiều ở firmware, ghi AzRD:).
+        /// Reverses the sign (software) of the azimuth axis: flips the direction of the moves this plugin
+        /// sends during an external correction session. Nothing is written to FRAM or the firmware - this is
+        /// not the "Reverse Direction" of the HARDWARE SETTING tab (that one reverses the firmware, AzRD:).
         /// </summary>
         public bool SoftwareReverseAzimuth
         {
@@ -545,9 +546,9 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Đảo dấu (software) cho trục Altitude: lật hướng các lệnh dịch chuyển do plugin gửi trong
-        /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
-        /// trong tab HARDWARE SETTING (đảo chiều ở firmware, ghi AlRD:).
+        /// Reverses the sign (software) of the altitude axis: flips the direction of the moves this plugin
+        /// sends during an external correction session. Nothing is written to FRAM or the firmware - this is
+        /// not the "Reverse Direction" of the HARDWARE SETTING tab (that one reverses the firmware, AlRD:).
         /// </summary>
         public bool SoftwareReverseAltitude
         {

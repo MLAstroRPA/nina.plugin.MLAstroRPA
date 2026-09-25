@@ -9,6 +9,16 @@
 > hardware-control plugin. When redistributing, comply with MPL-2.0: retain the license and
 > notices and credit the original author.
 
+## 2.3.0.0 — 2026-09-26
+
+### Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel
+### Changed — bridge code renamed from TppaBroker/ExternalCorrection to the Bridge vocabulary (BridgeClient, BridgeContract, BridgePayloads, BridgeRunner, BridgeEngine); every wire string is unchanged
+### Removed — the confirmation count and the session time limit settings: TPPA owns the finish policy and its own session time limit
+### Removed — the Stop external session button on the options page (STOP / FORCE STOP on the dock and the broker switch already cancel a running session)
+### Fixed — a stop now stops the axes before the session is cancelled and only once, and the aborted move is no longer reported as a hardware fault
+### Fixed — a pause no longer lets a planned move start
+### Fixed — losing the firmware link (serial or wireless) cancels the TPPA session instead of leaving it waiting
+
 ## 2.2.2.0 — 2026-09-25
 
 ### Changed — options tabs renamed and reordered: CONTROL, HARDWARE SETTING, SOFTWARE SETTING, CONNECTION

@@ -7,8 +7,8 @@
   tabs, header bar and the MLAstro docking panel.
 - Three Point Polar Alignment (TPPA) is **NOT part of this assembly**. TPPA is a separate NINA
   plugin (separate repository) that talks to this one through the NINA message broker. The
-  integration lives in `MLAstroRPA-broker\Broker\` (`TppaBrokerClient`, `TppaBrokerContract`,
-  `TppaBrokerPayloads`, `ExternalCorrectionRunner`, `ExternalCorrectionEngine`, `HardwareAligner`)
+  integration lives in `MLAstroRPA-broker\Broker\` (`BridgeClient`, `BridgeContract`,
+  `BridgePayloads`, `BridgeRunner`, `BridgeEngine`, `HardwareAligner`)
   and `MLAstroRPA-implement\`.
 - Code namespaces are `MLAstroRPA.*` (folder `MLAstroRPA-navigation\`) and `NINA.Plugins.MLAstroRPA.*`
   (manifest/options). Keep them unique from the merged `MLAstroRPA+TPPA` plugin: NINA merges every plugin

@@ -652,7 +652,7 @@
                         BorderThickness="0">
                     <StackPanel>
                         <TextBlock FontWeight="SemiBold" Text="{Binding TppaBrokerStatusText}" />
-                        <TextBlock Margin="0,2,0,0" Text="{Binding ExternalCorrectionStatusText}" />
+                        <TextBlock Margin="0,2,0,0" Text="{Binding BridgeStatusText}" />
                     </StackPanel>
                 </Border>
 

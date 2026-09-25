@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace MLAstroRPA.Broker
 {
@@ -15,7 +15,7 @@ namespace MLAstroRPA.Broker
         Rx
     }
 
-    /// <summary>Payload of <see cref="TppaBrokerClient.Traffic"/>.</summary>
+    /// <summary>Payload of <see cref="BridgeClient.Traffic"/>.</summary>
     public sealed class BrokerTrafficEventArgs : EventArgs
     {
         public BrokerTrafficEventArgs(BrokerLogDirection direction, string detail)
@@ -57,13 +57,13 @@ namespace MLAstroRPA.Broker
     /// <summary>Builds the Broker log text of an envelope received from TPPA.</summary>
     public static class BrokerTrafficText
     {
-        public static string Received(ExternalCorrectionEnvelope envelope)
+        public static string Received(BridgeEnvelope envelope)
         {
             if (envelope == null) { return "malformed message"; }
 
-            if (string.Equals(envelope.Kind, TppaBrokerKind.Measurement, StringComparison.Ordinal))
+            if (string.Equals(envelope.Kind, BridgeKind.Measurement, StringComparison.Ordinal))
             {
-                var measurement = envelope.PayloadAs<TppaMeasurement>();
+                var measurement = envelope.PayloadAs<BridgeMeasurement>();
                 if (measurement != null)
                 {
                     return string.Format("{0} (az {1:0.##}', alt {2:0.##}', total {3:0.##}', tol {4:0.##}')",
