@@ -132,7 +132,7 @@ Không sửa OAPA/UPAS/Avalon, không sửa estimator/`AutomatedAdjustmentContro
 - **Bỏ khỏi plugin MLAstro**: `Instructions/**`, `Dockables/DockablePolarAlignmentVM.cs`, `TPAPAVM.cs`, `Vector3.cs`, `RefractionParameters.cs`, `Avalon/**`, `OAPA/**` (phần TPPA), `Converters/**` của overlay, `Options.xaml(.cs)` của TPPA.
 - **Bỏ luôn phần mượn cổng**: `MLAstroLink.cs`, `SharedMlastroSerial.cs` (không còn ai tranh cổng COM) và interface `IPolarAlignmentSystem*`.
 - **Giữ**: `MLAstroRPA-navigation/**` (CONTROL / CONNECTION / CONFIGURATION), `MLAstroRPA-implement/Services/**` (Serial + WebSocket), resources/icon của MLAstro.
-- `PolarAlignmentPlugin.cs` → `MLAstroPlugin.cs`, **giữ nguyên `PluginId` (1352D162-…) và RootNamespace** để settings người dùng không mất; đổi `AssemblyName` phải sửa đồng bộ pack URI (bài học 2026-09-03).
+- `PolarAlignmentPlugin.cs` → `MLAstroPlugin.cs`, **giữ `RootNamespace`** (Settings/Locale/pack URI) nhưng **cấp `PluginId` (GUID) MỚI** — `1352D162-…` đã là PluginId của bản gộp **MLAstroRPA+TPPA đã phát hành**, dùng lại thì NINA coi 2 DLL là cùng một plugin (quyết định 2026-09-25). Hệ quả: settings MLAstro lưu theo GUID cũ không còn được đọc (phải cấu hình lại); đổi `AssemblyName` phải sửa đồng bộ pack URI (bài học 2026-09-03).
 - Driver MLAstro (`UniversalPolarAlignmentMLAstroRPA`) rút gọn thành **`HardwareAligner`** (không implement interface của TPPA): `AlignBothAxes(azArcMin, altArcMin)`, `Abort()`, `GetStatus()` — tái dùng `MoveBothAxes` / `RunAlignMove` (đã có: gửi ALIGN, chờ ack `ok`, poll `?` tới `READY`/`ALIGN_COMPLETED`, timeout 90 s).
 
 ### 3.2 Tab `SOFTWARE SETTING` (thay `TPPA OPTION`)

@@ -6,6 +6,38 @@
 
 ---
 
+## Trạng thái triển khai (2026-09-24)
+
+**Đã code xong lớp broker 2 phía, build sạch, protocol test pass.** Chưa test end-to-end với camera/motor thật.
+
+| Hạng mục | Trạng thái | Ghi chú |
+|---|---|---|
+| Hợp đồng §1 (topic, envelope, 14 Kind, payload) | ✅ | 2 phía giữ bản sao tên field; `Content` là JSON để không phải share assembly |
+| TPPA: 7 setting mới + UI nhóm `External correction` (tab Settings) | ✅ | mặc định `ExternalCorrectionEnabled = false` |
+| TPPA: publish `Measurement` (kể cả khi estimator unstable), `Capabilities`, `SessionState`, `SessionEnded` | ✅ | publish sau `AutoFinishGate` nên có `ToleranceReached` / `AutoFinishConditionMet` |
+| TPPA: window + silence watchdog + heartbeat + keep-alive + trần thời gian phiên | ✅ | `ExternalCorrectionSession` (thuần protocol, không đụng camera) |
+| TPPA: không auto-finish ở external mode, `MoveCloser` bị chặn khi có session | ✅ | |
+| TPPA: `SimulatedExternalController` + 24 protocol test | ✅ | `ExternalCorrectionProtocolTest.cs`, không cần camera |
+| TPPA: `docs/external-correction.md` | ✅ | hợp đồng đầy đủ + quy tắc an toàn |
+| MLAstro: tab `SOFTWARE SETTING` + switch `TppaBrokerEnabled` (default ON) + log broker | ✅ | 4 tab: CONTROL / CONNECTION / CONFIGURATION / SOFTWARE SETTING |
+| MLAstro: client (`TppaBrokerClient`), engine (`ExternalCorrectionEngine`), hardware (`HardwareAligner`), runner (`ExternalCorrectionRunner`) | ✅ | keep-alive từ timer nền; overshoot = vượt rồi back-off trong cùng window |
+| MLAstro: khoá điều khiển tay khi TPPA đang chạy phiên | ✅ | `SessionActiveChanged` → `IsAutomatedAdjustment` |
+| Chạy thật end-to-end (hội tụ dưới tolerance) | ⏳ | cần TPPA + camera + motor thật |
+| Version bump + CHANGELOG cho cả 2 repo | ⏳ | chờ user chốt số version |
+
+Các điểm **cố ý khác plan gốc** (đã chốt khi code):
+
+1. `ExternalSilenceTimeoutSec` mặc định **15** (plan §2.1 ghi 10) — khớp §1.5.2 (`SilenceTimeoutMs = 15000`); code còn ép tối thiểu 3 nhịp heartbeat.
+2. Thêm setting `ExternalReadyTimeoutSec` (30 s) — Q1-B cần con số này, plan ghi `[CẦN CHỐT: 30 s]`.
+3. `RequestMeasurement` / `RequestCompletion` **tự đóng window** ngay khi TPPA nhận lệnh (không để vòng lặp tự đóng) — tránh window treo nếu caller quên.
+4. `BeginAdjustment` lặp cùng `CommandId` → TPPA **phát lại** `AdjustmentGranted` cũ (idempotent theo §1.2) thay vì im lặng.
+5. MLAstro làm **một lệnh ALIGN cho mỗi window** (overshoot + back-off là 2 lệnh trong cùng window), chưa làm chuỗi nhiều window.
+6. Chưa làm: hiển thị trạng thái external trên UI TPPA (§2.5/PR2), `GetSessionState`, dữ liệu dec-spread.
+
+---
+
+
+
 ## 0. Mục tiêu & phạm vi
 
 **Yêu cầu gốc (user)**
@@ -317,7 +349,7 @@ Nếu thấy sai số bất thường quanh overshoot: ghi lại TPPA version + 
 - **Bỏ**: `Instructions/**`, `Dockables/DockablePolarAlignmentVM.cs`, `TPAPAVM.cs`, `Vector3.cs`, `RefractionParameters.cs`, `Avalon/**`, `OAPA/**` (phần TPPA), `Converters/**` của overlay, `Options.xaml(.cs)` của TPPA.
 - **Bỏ luôn phần mượn cổng**: `MLAstroLink.cs`, `SharedMlastroSerial.cs`, `IPolarAlignmentSystem*` (không còn ai tranh cổng COM).
 - **Giữ**: `MLAstroRPA-navigation/**` (CONTROL / CONNECTION / CONFIGURATION), `MLAstroRPA-implement/Services/**` (Serial + WebSocket), resources/icon MLAstro.
-- `PolarAlignmentPlugin.cs` → `MLAstroPlugin.cs`, **giữ `PluginId` (1352D162-…) và RootNamespace**; đổi `AssemblyName` phải sửa đồng bộ pack URI.
+- `PolarAlignmentPlugin.cs` → `MLAstroPlugin.cs`, **giữ `RootNamespace`** nhưng **cấp `PluginId` (GUID) MỚI** (`1352D162-…` giữ cho bản gộp MLAstroRPA+TPPA đã phát hành; trùng PluginId ⇒ NINA coi là cùng plugin — quyết định 2026-09-25). Hệ quả: settings MLAstro theo GUID cũ phải cấu hình lại; đổi `AssemblyName` phải sửa đồng bộ pack URI.
 - Driver rút gọn thành **`HardwareAligner`**: `AlignBothAxes(azArcMin, altArcMin)`, `NudgeAz`, `NudgeAlt`, `Abort`, `GetStatus` — tái dùng `MoveBothAxes`/`RunAlignMove` (ack `ok` → poll `?` tới `READY`/`ALIGN_COMPLETED`, timeout 90 s).
 
 ### 3.2 Tab `SOFTWARE SETTING`

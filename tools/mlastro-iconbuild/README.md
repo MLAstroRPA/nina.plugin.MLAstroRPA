@@ -36,4 +36,4 @@ dotnet run --project tools\mlastro-iconbuild -- `
 - Sau khi sinh XAML, hãy nhìn `preview.png` để kiểm tra tỉ lệ/độ đậm của chữ (glyph
   WPF có thể hơi khác SVG một chút do font metric).
 - Sau đó chạy build plugin để NINA nạp icon mới:
-  `dotnet build MLAstroRPA_TPPA.csproj -c Release -tl:off`
+  `dotnet build MLAstroRPA.csproj -c Release -tl:off`

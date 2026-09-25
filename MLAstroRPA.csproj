@@ -1,12 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    MLAstroRPA + TPPA merged NINA plugin.
-    Single plugin assembly "NINA.Plugins.MLAstroRPA_TPPA" (renamed from the TPPA base
-    "NINA.Plugins.PolarAlignment"; code namespaces + RootNamespace stay "NINA.Plugins.PolarAlignment").
-    Display name comes from AssemblyTitle = "MLAstroRPA+TPPA".
-    PluginId (GUID) = 1352D162-2E66-4F80-A05B-854F021DB913 (UNIQUE, distinct from standalone TPPA
-    1de8d7d3-f11e-494c-a371-95cb48dffa18 so NINA treats them as separate plugins).
+    MLAstroRPA NINA plugin (MLAstro Robotic Polar Alignment hardware control only; TPPA is a
+    SEPARATE plugin that talks to this one through the NINA message broker).
+    Single plugin assembly "NINA.Plugins.MLAstroRPA" (code namespaces + RootNamespace stay
+    "NINA.Plugins.PolarAlignment"; generated Settings/Locale names depend on RootNamespace,
+    not on AssemblyName).
+    Display name comes from AssemblyTitle = "MLAstroRPA".
+    PluginId (GUID) = af3ab7b3-f11a-4671-a87f-e7c3985fb509 (UNIQUE, distinct from the standalone
+    TPPA plugin 1de8d7d3-f11e-494c-a371-95cb48dffa18 and from the merged MLAstroRPA+TPPA plugin
+    1352D162-2E66-4F80-A05B-854F021DB913 so NINA treats them as separate plugins).
   -->
 
   <PropertyGroup>
@@ -17,11 +20,11 @@
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
 
-    <!-- File renamed to MLAstroRPA_TPPA.csproj. AssemblyName = NINA.Plugins.MLAstroRPA_TPPA so the
-         plugin DLL is NINA.Plugins.MLAstroRPA_TPPA.dll (all pack URIs embedding the assembly token
-         were updated to match). RootNamespace stays NINA.Plugins.PolarAlignment because the code keeps
-         the TPPA namespaces and generated names must stay valid (e.g. NINA.Plugins.PolarAlignment.Properties
-         and the embedded Locale resource NINA.Plugins.PolarAlignment.Locale.Locale). -->
+    <!-- Project file is MLAstroRPA.csproj; AssemblyName = NINA.Plugins.MLAstroRPA so the plugin DLL
+         is NINA.Plugins.MLAstroRPA.dll. RootNamespace stays NINA.Plugins.PolarAlignment because the
+         code keeps the TPPA namespaces and generated names must stay valid (e.g.
+         NINA.Plugins.PolarAlignment.Properties and the embedded Locale resource
+         NINA.Plugins.PolarAlignment.Locale.Locale). -->
     <AssemblyName>NINA.Plugins.MLAstroRPA</AssemblyName>
     <RootNamespace>NINA.Plugins.PolarAlignment</RootNamespace>
 
@@ -96,7 +99,7 @@ CONTROL / CONNECTION / CONFIGURATION options tabs, header bar and the MLAstro do
          copied over. 2>nul suppresses the benign "process not found" warning. -->
     <Exec IgnoreExitCode="true" Command="taskkill /f /im NINA.exe 2>nul" />
     <Exec IgnoreExitCode="true" Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;for ($i=0; $i -lt 50; $i++) { if (-not (Get-Process -Name NINA -ErrorAction SilentlyContinue)) { break }; Start-Sleep -Milliseconds 200 }&quot;" />
-    <Exec IgnoreExitCode="true" Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins&quot; (&#xD;&#xA;    echo &quot;Creating Plugins %25localappdata%25\NINA\Plugins folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; (&#xD;&#xA;    echo &quot; folder cleanup&quot;&#xD;&#xA;    rmdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; /S /Q&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA-TPPA&quot; (&#xD;&#xA;    echo &quot; removing legacy MLAstroRPA-TPPA folder (plugin renamed)&quot;&#xD;&#xA;    rmdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA-TPPA&quot; /S /Q&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; (&#xD;&#xA;    echo &quot;Creating %25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot;&#xD;&#xA;)&#xD;&#xA;echo &quot;Copying $(TargetFileName)&quot;&#xD;&#xA;copy &quot;$(TargetDir)$(TargetFileName)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA\$(TargetName)$(TargetExt)&quot; /Y&#xD;&#xA;" />
+    <Exec IgnoreExitCode="true" Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins&quot; (&#xD;&#xA;    echo &quot;Creating Plugins %25localappdata%25\NINA\Plugins folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; (&#xD;&#xA;    echo &quot; folder cleanup&quot;&#xD;&#xA;    rmdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; /S /Q&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; (&#xD;&#xA;    echo &quot;Creating %25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot;&#xD;&#xA;)&#xD;&#xA;echo &quot;Copying $(TargetFileName)&quot;&#xD;&#xA;copy &quot;$(TargetDir)$(TargetFileName)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA\$(TargetName)$(TargetExt)&quot; /Y&#xD;&#xA;" />
     <!-- Only the plugin DLL is deployed. NINA shows the logo via
          AssemblyMetadata("FeaturedImageURL") and the in-UI logos are embedded resources. -->
   </Target>

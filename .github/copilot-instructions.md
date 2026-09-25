@@ -1,21 +1,39 @@
 # Copilot Instructions
 
 ## Project Guidelines
-- This is the merged **MLAstroRPA+TPPA** NINA plugin (single assembly `NINA.Plugins.MLAstroRPA_TPPA`,
-  display name `MLAstroRPA+TPPA`). It combines the MLAstro Robotic Polar Alignment hardware control
-  (CONTROL / CONNECTION / CONFIGURATION tabs) with the Three Point Polar Alignment (TPPA) wizard.
+- This is the **MLAstroRPA** NINA plugin (assembly `NINA.Plugins.MLAstroRPA`, display name `MLAstroRPA`,
+  PluginId GUID `af3ab7b3-f11a-4671-a87f-e7c3985fb509`). It covers the MLAstro Robotic Polar
+  Alignment hardware control only: CONTROL / CONNECTION / CONFIGURATION / SOFTWARE SETTING options
+  tabs, header bar and the MLAstro docking panel.
+- Three Point Polar Alignment (TPPA) is **NOT part of this assembly**. TPPA is a separate NINA
+  plugin (separate repository) that talks to this one through the NINA message broker. The
+  integration lives in `MLAstroRPA-broker\Broker\` (`TppaBrokerClient`, `TppaBrokerContract`,
+  `TppaBrokerPayloads`, `ExternalCorrectionRunner`, `ExternalCorrectionEngine`, `HardwareAligner`)
+  and `MLAstroRPA-implement\`.
 - MLAstro-origin code keeps the `MLAstro_Robotic_Polar_Alignment.*` namespaces (folder `MLAstroRPA-navigation\`).
-  TPPA-origin code lives in `NINA.Plugins.PolarAlignment.*` at the repository root.
-- There is exactly ONE `IPluginManifest`: `PolarAlignmentPlugin` (root). The MLAstro controller
-  (`MLAstroRPA-navigation\Plugin\MLAstroController.cs`) is NOT a manifest - it is owned by `PolarAlignmentPlugin.MLAstro`.
-- The plugin Options page is the root `Options.xaml` (`DataTemplate x:Key="MLAstroRPA+TPPA_Options"`)
-  - a TabControl with tabs: `TPPA OPTION`, `CONTROL`, `CONNECTION`, `CONFIGURATION`. The MLAstro tab
-  bodies live in `MLAstroRPA-navigation\Plugin\MLAstroOptions.xaml` (merged via `MergedDictionaries`).
+- There is exactly ONE `IPluginManifest`: `MLAstroPlugin` (root `MLAstroPlugin.cs`). The MLAstro
+  controller (`MLAstroRPA-navigation\Plugin\MLAstroController.cs`) is NOT a manifest - it is owned by
+  `MLAstroPlugin.MLAstro`.
+- The plugin Options page is the root `Options.xaml` (`DataTemplate x:Key="MLAstroRPA_Options"`)
+  - a TabControl with tabs: `CONTROL`, `CONNECTION`, `CONFIGURATION`, `SOFTWARE SETTING`. The MLAstro
+  tab bodies live in `MLAstroRPA-navigation\Plugin\MLAstroOptions.xaml` (merged via `MergedDictionaries`).
 - In the plugin options UI, only top-level sections (tabs / top-level Expanders) should be
   expandable/collapsible and they should default to expanded; nested subsections must not be collapsible.
-- The serial COM port is owned by `SerialConnectionService` (MLAstro). TPPA's `MLAstroRPA` driver
-  borrows it through the external-control API (`MLAstroLink` -> direct calls, NO reflection). Keep
-  that architecture: one owner, "external control" borrow + pause-query, plus direct COM-scan fallback.
+- The COM port and the wireless (WebSocket) link are owned by `SerialConnectionService` (MLAstro).
+  External consumers borrow it through the external-control API (`BeginExternalControlAsync` /
+  `EndExternalControl` / `NotifyExternalStop` + `AddExternalControlListener`, mirrored on the wireless
+  proxy in `MlastroWebSocketService`) - direct calls, NO reflection. Keep that architecture: one
+  owner, "external control" borrow + pause-query, plus direct COM-scan fallback.
+
+## Build
+- `dotnet build MLAstroRPA.csproj -c Release -tl:off` (or the solution `MLAstroRPA.slnx`).
+- Post-build runs for Debug AND Release: it stops NINA, copies the DLL to
+  `%LOCALAPPDATA%\NINA\Plugins\3.0.0\MLAstroRPA\` and refreshes the MSI staging copy
+  `Installer\MSI\Plugin\MLAstroRPA\`. After a Debug build, build Release again before packaging the MSI.
+- Exactly ONE plugin project (`MLAstroRPA.csproj`) may exist in this repository - never add a second
+  csproj for the same sources.
+- Version source of truth: `MLAstroRPA.csproj` `<Version>` / `<AssemblyVersion>` / `<FileVersion>` /
+  `<InformationalVersion>` + the top `Changelog.md` entry.
 
 ## Terminal UI Guidelines (CONNECTION tab)
 - Do not tint the terminal (RichTextBox) background; keep the context menu background white.

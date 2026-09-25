@@ -1,13 +1,13 @@
 ﻿# Changelog
 
-> **Origin & license (TPPA).** The polar-alignment portion of this plugin is a fork of the
-> original open-source **Three Point Polar Alignment (TPPA)** plugin for NINA by
-> [Isbeorn](https://github.com/isbeorn/nina.plugin.polaralignment), which is licensed under the
-> **Mozilla Public License 2.0 (MPL-2.0)**. The TPPA-derived code in this project therefore stays
-> under MPL-2.0, keeping the original license/copyright notices. **MLAstroRPA+TPPA is a separate,
-> unofficial build — it is NOT the original/official TPPA plugin.** When redistributing, comply
-> with MPL-2.0: retain the license and notices, credit the original author, and make the source
-> (including your modifications) available.
+> **License & origin.** This repository is distributed under the **Mozilla Public License 2.0
+> (MPL-2.0)** — see `LICENSE`. Part of the code history comes from the original open-source
+> **Three Point Polar Alignment (TPPA)** plugin for NINA by
+> [Isbeorn](https://github.com/isbeorn/nina.plugin.polaralignment) (MPL-2.0). The TPPA wizard has
+> since been moved out into a separate plugin/repository (it talks to this one through the NINA
+> message broker), so this repository contains only the MLAstro Robotic Polar Alignment
+> hardware-control plugin. When redistributing, comply with MPL-2.0: retain the license and
+> notices and credit the original author.
 
 ## 2.2.1.0 — 2026-09-20
 

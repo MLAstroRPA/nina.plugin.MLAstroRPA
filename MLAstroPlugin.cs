@@ -30,8 +30,9 @@ namespace NINA.Plugins.PolarAlignment {
         [ImportingConstructor]
         public MLAstroPlugin(global::MLAstro_Robotic_Polar_Alignment.Settings.PluginSettings settings,
             SerialConnectionService serialConnectionService,
-            PolarAlignmentDockVM polarAlignmentDockVM) {
-            MLAstro = new MLAstroController(settings, serialConnectionService, polarAlignmentDockVM);
+            PolarAlignmentDockVM polarAlignmentDockVM,
+            IMessageBroker messageBroker) {
+            MLAstro = new MLAstroController(settings, serialConnectionService, polarAlignmentDockVM, messageBroker);
             PluginId = this.Identifier;
             Logger.Info("[MLAstro] MLAstroPlugin created");
         }

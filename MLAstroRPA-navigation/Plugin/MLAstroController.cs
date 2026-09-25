@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using MLAstro_Robotic_Polar_Alignment.Broker;
 using MLAstro_Robotic_Polar_Alignment.Dockables;
 using MLAstro_Robotic_Polar_Alignment.Services;
 using MLAstro_Robotic_Polar_Alignment.Settings;
@@ -417,11 +418,397 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
 
         public ICommand ResetErrorCommand { get; }
 
-        public MLAstroController(PluginSettings settings, SerialConnectionService serialConnectionService, PolarAlignmentDockVM polarAlignmentDockVM)
+        // ===== External correction qua broker TPPA (tab SOFTWARE SETTING) =====
+
+        private readonly IMessageBroker _messageBroker;
+        private TppaBrokerClient? _tppaBrokerClient;
+        private HardwareAligner? _hardwareAligner;
+        private ExternalCorrectionRunner? _externalRunner;
+        private const int BrokerLogMaxEntries = 50;
+
+        /// <summary>Dòng log ngắn của tích hợp broker (mới nhất lên trên) để kiểm tra không cần mở log NINA.</summary>
+        public ObservableCollection<BrokerLogEntry> BrokerLog { get; } = new();
+
+        public ICommand StopExternalSessionCommand { get; }
+
+        /// <summary>
+        /// Switch bắt tay với TPPA. ON = announce capabilities + subscribe event + chạy runner.
+        /// OFF = huỷ subscribe, bỏ qua mọi event; nếu đang có phiên thì gửi Cancel trước khi tắt.
+        /// </summary>
+        public bool TppaBrokerEnabled
+        {
+            get => Settings.TppaBrokerEnabled;
+            set
+            {
+                if (Settings.TppaBrokerEnabled == value) { return; }
+
+                if (value)
+                {
+                    Settings.TppaBrokerEnabled = true;
+                    StartExternalCorrection();
+                }
+                else
+                {
+                    StopExternalCorrection();
+                    Settings.TppaBrokerEnabled = false;
+                }
+
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(TppaBrokerStatusText));
+            }
+        }
+
+        /// <summary>Trạng thái bắt tay với TPPA: off / searching / vX ready / incompatible.</summary>
+        public string TppaBrokerStatusText => _tppaBrokerClient?.StatusText ?? "TPPA: off";
+
+        /// <summary>Trạng thái vòng sửa hiện tại phía MLAstro.</summary>
+        public string ExternalCorrectionStatusText => _externalRunner?.StatusText ?? "Idle";
+
+        public ExternalAxisMode CorrectionAxisMode
+        {
+            get => Settings.CorrectionAxisMode;
+            set
+            {
+                Settings.CorrectionAxisMode = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CorrectionAxisModeIndex));
+            }
+        }
+
+        /// <summary>0 = Both (một lệnh ALIGN 2 trục), 1 = Auto (chỉ trục sai số lớn hơn).</summary>
+        public int CorrectionAxisModeIndex
+        {
+            get => Settings.CorrectionAxisMode == ExternalAxisMode.Auto ? 1 : 0;
+            set
+            {
+                CorrectionAxisMode = value == 1 ? ExternalAxisMode.Auto : ExternalAxisMode.Both;
+            }
+        }
+
+        public double CorrectionSafetyFactor
+        {
+            get => Settings.CorrectionSafetyFactor;
+            set
+            {
+                Settings.CorrectionSafetyFactor = Math.Max(0.05, Math.Min(1.0, value));
+                OnPropertyChanged();
+            }
+        }
+
+        public double CorrectionMaxStepArcMin
+        {
+            get => Settings.CorrectionMaxStepArcMin;
+            set
+            {
+                Settings.CorrectionMaxStepArcMin = Math.Max(1, value);
+                OnPropertyChanged();
+            }
+        }
+
+        public bool CorrectionOvershootEnabled
+        {
+            get => Settings.CorrectionOvershootEnabled;
+            set
+            {
+                Settings.CorrectionOvershootEnabled = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool CorrectionOvershootUpEnabled
+        {
+            get => Settings.CorrectionOvershootUpEnabled;
+            set
+            {
+                Settings.CorrectionOvershootUpEnabled = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool CorrectionOvershootDownEnabled
+        {
+            get => Settings.CorrectionOvershootDownEnabled;
+            set
+            {
+                Settings.CorrectionOvershootDownEnabled = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public double CorrectionOvershootUpArcMin
+        {
+            get => Settings.CorrectionOvershootUpArcMin;
+            set
+            {
+                Settings.CorrectionOvershootUpArcMin = Math.Max(0, value);
+                OnPropertyChanged();
+            }
+        }
+
+        public double CorrectionOvershootDownArcMin
+        {
+            get => Settings.CorrectionOvershootDownArcMin;
+            set
+            {
+                Settings.CorrectionOvershootDownArcMin = Math.Max(0, value);
+                OnPropertyChanged();
+            }
+        }
+
+        public bool SoftwareReverseAzimuth
+        {
+            get => Settings.SoftwareReverseAzimuth;
+            set
+            {
+                Settings.SoftwareReverseAzimuth = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public bool SoftwareReverseAltitude
+        {
+            get => Settings.SoftwareReverseAltitude;
+            set
+            {
+                Settings.SoftwareReverseAltitude = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public double CorrectionAzBacklashArcMin
+        {
+            get => Settings.CorrectionAzBacklashArcMin;
+            set
+            {
+                Settings.CorrectionAzBacklashArcMin = Math.Max(0, value);
+                OnPropertyChanged();
+            }
+        }
+
+        public int CorrectionTimeoutSec
+        {
+            get => Settings.CorrectionTimeoutSec;
+            set
+            {
+                Settings.CorrectionTimeoutSec = Math.Max(60, value);
+                OnPropertyChanged();
+            }
+        }
+
+        public int CorrectionConsecutiveToFinish
+        {
+            get => Settings.CorrectionConsecutiveToFinish;
+            set
+            {
+                Settings.CorrectionConsecutiveToFinish = Math.Max(1, value);
+                OnPropertyChanged();
+            }
+        }
+
+        /// <summary>Cảnh báo cấu hình overshoot (chỉ hiện khi overshoot đang bật và không hợp lệ).</summary>
+        public string OvershootWarningText
+        {
+            get
+            {
+                if (!CorrectionOvershootEnabled) { return string.Empty; }
+                var tolerance = _tppaBrokerClient?.Capabilities?.ToleranceArcMin ?? 0;
+                if (tolerance <= 0) { return string.Empty; }
+
+                var smallest = Math.Min(
+                    CorrectionOvershootUpArcMin > 0 ? CorrectionOvershootUpArcMin : double.MaxValue,
+                    CorrectionOvershootDownArcMin > 0 ? CorrectionOvershootDownArcMin : double.MaxValue);
+                if (smallest == double.MaxValue) { return string.Empty; }
+
+                return ExternalCorrectionEngine.IsOvershootAboveTolerance(smallest, tolerance)
+                    ? string.Empty
+                    : ExternalCorrectionEngine.OvershootWarning;
+            }
+        }
+
+        public Visibility OvershootWarningVisibility =>
+            string.IsNullOrEmpty(OvershootWarningText) ? Visibility.Collapsed : Visibility.Visible;
+
+        /// <summary>Người dùng bấm Stop trên tab SOFTWARE SETTING: gửi Cancel và giữ motor dừng.</summary>
+        private async Task StopExternalSessionAsync()
+        {
+            var runner = _externalRunner;
+            if (runner == null || !runner.IsSessionRunning)
+            {
+                AppendBrokerLog("No external session is running.");
+                return;
+            }
+
+            try
+            {
+                AppendBrokerLog("Stopping the external session on request.");
+                await runner.AbortSessionAsync(TppaBrokerReason.UserStop).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        private void InitializeExternalCorrection(IMessageBroker messageBroker)
+        {
+            if (messageBroker == null) { return; }
+
+            _tppaBrokerClient = new TppaBrokerClient(messageBroker, Settings);
+            _hardwareAligner = new HardwareAligner(_serialConnectionService);
+            _externalRunner = new ExternalCorrectionRunner(_tppaBrokerClient, _hardwareAligner, Settings);
+
+            _tppaBrokerClient.StatusChanged += (_, __) => RaiseBrokerStatus();
+            _tppaBrokerClient.Traffic += (_, e) => AppendBrokerLog(e.Direction, e.Detail);
+            _externalRunner.StatusChanged += (_, __) => RaiseBrokerStatus(appendLog: true);
+            // Trong phiên TPPA, chỉ controller ngoài được quay motor: khoá điều khiển tay/auto của dock.
+            _externalRunner.SessionActiveChanged += (_, active) => SetDockAutomatedAdjustment(active);
+
+            if (Settings.TppaBrokerEnabled)
+            {
+                StartExternalCorrection();
+            }
+            else
+            {
+                AppendBrokerLog("Broker off (switch disabled).");
+            }
+        }
+
+        private void StartExternalCorrection()
+        {
+            _externalRunner?.Start();
+            _tppaBrokerClient?.Start();
+            AppendBrokerLog("Broker on: announcing capabilities to the polar alignment plugin.");
+            RaiseBrokerStatus();
+        }
+
+        /// <summary>
+        /// Khoá / mở khoá điều khiển tay của dock khi phiên TPPA bắt đầu / kết thúc. Chạy trên UI thread
+        /// vì cờ này điều khiển enable/disable của các nút trên options page.
+        /// </summary>
+        private void SetDockAutomatedAdjustment(bool active)
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                void apply()
+                {
+                    var vm = _polarAlignmentDockVM;
+                    if (vm == null) { return; }
+                    vm.IsAutomatedAdjustment = active;
+                    AppendBrokerLog(active
+                        ? "TPPA session owns the axes: manual controls locked."
+                        : "TPPA session finished: manual controls unlocked.");
+                }
+
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(new Action(apply));
+                }
+                else
+                {
+                    apply();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        private void StopExternalCorrection()
+        {
+            try
+            {
+                if (_externalRunner?.IsSessionRunning == true)
+                {
+                    _externalRunner.AbortSessionAsync(TppaBrokerReason.UserStop).GetAwaiter().GetResult();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+
+            _externalRunner?.Stop();
+            _tppaBrokerClient?.Stop();
+            AppendBrokerLog("Broker off.");
+            RaiseBrokerStatus();
+        }
+
+        private void RaiseBrokerStatus(bool appendLog = false)
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                void update()
+                {
+                    OnPropertyChanged(nameof(TppaBrokerStatusText));
+                    OnPropertyChanged(nameof(ExternalCorrectionStatusText));
+                    OnPropertyChanged(nameof(OvershootWarningText));
+                    OnPropertyChanged(nameof(OvershootWarningVisibility));
+                    if (appendLog)
+                    {
+                        AppendBrokerLog(_externalRunner?.StatusText ?? string.Empty);
+                    }
+                }
+
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(new Action(update));
+                }
+                else
+                {
+                    update();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        private void AppendBrokerLog(string message) => AppendBrokerLog(BrokerLogDirection.Notice, message);
+
+        /// <summary>
+        /// Thêm một dòng vào Broker log. Các dòng đến từ luồng broker được marshal sang UI thread vì
+        /// collection này được bind vào options page.
+        /// </summary>
+        private void AppendBrokerLog(BrokerLogDirection direction, string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) { return; }
+
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(new Action(() => InsertBrokerLog(direction, message)));
+                    return;
+                }
+
+                InsertBrokerLog(direction, message);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        private void InsertBrokerLog(BrokerLogDirection direction, string message)
+        {
+            BrokerLog.Insert(0, new BrokerLogEntry(direction, message));
+            while (BrokerLog.Count > BrokerLogMaxEntries)
+            {
+                BrokerLog.RemoveAt(BrokerLog.Count - 1);
+            }
+        }
+
+        public MLAstroController(PluginSettings settings, SerialConnectionService serialConnectionService, PolarAlignmentDockVM polarAlignmentDockVM, IMessageBroker messageBroker)
         {
             Settings = settings;
             _serialConnectionService = serialConnectionService;
             _polarAlignmentDockVM = polarAlignmentDockVM;
+            _messageBroker = messageBroker;
             _webSocketService = new MlastroWebSocketService(settings, serialConnectionService);
 
             RefreshComPortsCommand = new RelayCommand(RefreshComPorts);
@@ -437,6 +824,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             ClearSystemLogCommand = new RelayCommand(_webSocketService.ClearSystemLog);
             ExportSystemLogCommand = new RelayCommand(ExportSystemLog);
             ResetErrorCommand = new RelayCommand(ResetError);
+            StopExternalSessionCommand = new RelayCommand(async () => await StopExternalSessionAsync());
 
             Settings.PropertyChanged += OnSettingsPropertyChanged;
             _serialConnectionService.PropertyChanged += OnSerialConnectionServicePropertyChanged;
@@ -462,6 +850,9 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
                 catch { }
             };
             RefreshComPorts();
+
+            // Tích hợp broker với TPPA: announce capabilities + chạy vòng sửa tự động (nếu switch ON).
+            InitializeExternalCorrection(messageBroker);
 
             // Hook into application exit to ensure cleanup - must run on UI thread
             if (Application.Current != null)
@@ -537,7 +928,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             try
             {
                 // Get the plugin assembly's directory
-                // Plugin is at: %LOCALAPPDATA%\NINA\Plugins\3.0.0\MLAstroRPA-TPPA
+                // Plugin is at: %LOCALAPPDATA%\NINA\Plugins\3.0.0\MLAstroRPA
                 var assemblyLocation = GetType().Assembly.Location;
                 var pluginFolder = Path.GetDirectoryName(assemblyLocation);
 
@@ -1329,6 +1720,18 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             if (disposing)
             {
                 Logger.Info("[MLAstro] MLAstroController disposing...");
+
+                // Tích hợp broker: ngắt phiên đang chạy, huỷ subscribe rồi giải phóng.
+                try
+                {
+                    _externalRunner?.Dispose();
+                    _hardwareAligner?.Dispose();
+                    _tppaBrokerClient?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex);
+                }
 
                 // Dispose the polar alignment view model first
                 try

@@ -56,7 +56,7 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <!-- Top-level tabs spread evenly across the full dock width -->
-                            <UniformGrid x:Name="HeaderHost" Grid.Row="0" Rows="1" Columns="3" IsItemsHost="True"
+                            <UniformGrid x:Name="HeaderHost" Grid.Row="0" Rows="1" Columns="4" IsItemsHost="True"
                                          Panel.ZIndex="1" Background="#2C3E50"/>
                             <ContentPresenter Grid.Row="1"
                                               ContentSource="SelectedContent"
@@ -75,6 +75,10 @@
                 <TabItem Header="CONFIGURATION">
                     <ContentControl Content="{Binding MLAstro}"
                                     ContentTemplate="{DynamicResource MlaConfigurationBody}" />
+                </TabItem>
+                <TabItem Header="SOFTWARE SETTING">
+                    <ContentControl Content="{Binding MLAstro}"
+                                    ContentTemplate="{DynamicResource MlaSoftwareBody}" />
                 </TabItem>
             </TabControl>
         </DockPanel>

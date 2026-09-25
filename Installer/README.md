@@ -1,19 +1,19 @@
-# MLAstroRPA+TPPA - Installer
+# MLAstroRPA - Installer
 
-This folder contains scripts and tooling to create the MSI installer for the merged
-**MLAstroRPA+TPPA** N.I.N.A. plugin (`NINA.Plugins.MLAstroRPA_TPPA.dll`).
+This folder contains scripts and tooling to create the MSI installer for the
+**MLAstroRPA** N.I.N.A. plugin (`NINA.Plugins.MLAstroRPA.dll`).
 
-The plugin is a single assembly combining the MLAstro Robotic Polar Alignment hardware control
-with the Three Point Polar Alignment wizard, and is installed to
-`%LocalAppData%\NINA\Plugins\3.0.0\MLAstroRPA-TPPA`.
+The plugin covers the MLAstro Robotic Polar Alignment hardware control (CONTROL / CONNECTION /
+CONFIGURATION / SOFTWARE SETTING tabs) and is installed to
+`%LocalAppData%\NINA\Plugins\3.0.0\MLAstroRPA`.
 
 ## Tasks (VS Code)
 
 From the command palette (Ctrl+Shift+P > "Tasks: Run Task"):
 
-- **dotnet: build** - build `MLAstroRPA_TPPA.csproj` (Release).
+- **dotnet: build** - build `MLAstroRPA.csproj` (Release).
 - **.NET Build MSI** - run `MSI\Release-MSI.ps1`: reads the version already set in
-  `MLAstroRPA_TPPA.csproj` (no auto-bump), syncs `Package.wxs`, builds the plugin + WiX
+  `MLAstroRPA.csproj` (no auto-bump), syncs `Package.wxs`, builds the plugin + WiX
   installer, and copies the MSI to `Output\MLAstroRPA_TPPA_Plugin_<v>.msi`.
 - **GIT: Release Repo** - no MSI build. Confirms the new MSI was already built, then creates a
   GitHub release from the newest MSI in `Output` and uploads the MSI + staged plugin DLL.
@@ -33,7 +33,7 @@ The MSI will be created in `Output\MLAstroRPA_TPPA_Plugin_<version>.msi`.
 ## Versioning (for developers)
 
 The plugin version is `A.B.C.D` (MAJOR.MINOR.PATCH.BUILD). Building the MSI **does not bump**
-the version — the script only reads the version already set in `MLAstroRPA_TPPA.csproj`
+the version — the script only reads the version already set in `MLAstroRPA.csproj`
 (`<Version>`, `<AssemblyVersion>`, `<FileVersion>`, `<InformationalVersion>`) and mirrors it into
 `Package.wxs`. Keep those tags and the top `Changelog.md` entry in sync before building.
 

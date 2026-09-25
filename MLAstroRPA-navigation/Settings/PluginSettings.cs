@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using MLAstro_Robotic_Polar_Alignment.Broker;
 using MLAstro_Robotic_Polar_Alignment.Dockables;
 
 namespace MLAstro_Robotic_Polar_Alignment.Settings
@@ -456,6 +457,126 @@ namespace MLAstro_Robotic_Polar_Alignment.Settings
             // giá trị mặc định giả: khi chưa có telemetry thì để RỖNG (UI hiện trống = chưa có IP).
             get => GetString(nameof(WifiIp), string.Empty);
             set => SetString(value);
+        }
+
+        // ===== External correction qua broker TPPA (tab SOFTWARE SETTING) =====
+
+        /// <summary>
+        /// Bật/tắt toàn bộ tích hợp broker với plugin Three Point Polar Alignment: tự announce
+        /// capabilities, nhận sai số, điều khiển motor và báo kết thúc phiên.
+        /// </summary>
+        public bool TppaBrokerEnabled
+        {
+            get => GetBool(nameof(TppaBrokerEnabled), true);
+            set => SetBool(value);
+        }
+
+        /// <summary>Chiến lược sửa: Both = 1 lệnh ALIGN 2 trục, Auto = chỉ trục có sai số lớn hơn.</summary>
+        public ExternalAxisMode CorrectionAxisMode
+        {
+            get
+            {
+                var value = GetString(nameof(CorrectionAxisMode), ExternalAxisMode.Both.ToString());
+                return Enum.TryParse<ExternalAxisMode>(value, true, out var mode) ? mode : ExternalAxisMode.Both;
+            }
+            set => SetString(value.ToString());
+        }
+
+        /// <summary>Hệ số an toàn nhân vào sai số đo được trước khi gửi lệnh (1.0 = sửa đúng bằng sai số).</summary>
+        public double CorrectionSafetyFactor
+        {
+            get => GetDouble(nameof(CorrectionSafetyFactor), 0.75);
+            set => SetDouble(value);
+        }
+
+        /// <summary>Giới hạn biên độ mỗi lần sửa (arcmin) để một sai số lớn không gây cú quay nguy hiểm.</summary>
+        public double CorrectionMaxStepArcMin
+        {
+            get => GetDouble(nameof(CorrectionMaxStepArcMin), 60);
+            set => SetDouble(value);
+        }
+
+        /// <summary>Bật overshoot: cố tình vượt target một đoạn rồi quay lại để triệt backlash.</summary>
+        public bool CorrectionOvershootEnabled
+        {
+            get => GetBool(nameof(CorrectionOvershootEnabled), false);
+            set => SetBool(value);
+        }
+
+        public double CorrectionOvershootUpArcMin
+        {
+            get => GetDouble(nameof(CorrectionOvershootUpArcMin), 5);
+            set => SetDouble(value);
+        }
+
+        public double CorrectionOvershootDownArcMin
+        {
+            get => GetDouble(nameof(CorrectionOvershootDownArcMin), 5);
+            set => SetDouble(value);
+        }
+
+        /// <summary>
+        /// Bật overshoot khi trục Altitude phải đi LÊN. Chỉ có hiệu lực khi CorrectionOvershootEnabled bật.
+        /// </summary>
+        public bool CorrectionOvershootUpEnabled
+        {
+            get => GetBool(nameof(CorrectionOvershootUpEnabled), true);
+            set => SetBool(value);
+        }
+
+        /// <summary>
+        /// Bật overshoot khi trục Altitude phải đi XUỐNG. Chỉ có hiệu lực khi CorrectionOvershootEnabled bật.
+        /// </summary>
+        public bool CorrectionOvershootDownEnabled
+        {
+            get => GetBool(nameof(CorrectionOvershootDownEnabled), true);
+            set => SetBool(value);
+        }
+
+        /// <summary>
+        /// Đảo dấu (software) cho trục Azimuth: lật hướng các lệnh dịch chuyển do plugin gửi trong
+        /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
+        /// trong tab CONFIGURATION (đảo chiều ở firmware, ghi AzRD:).
+        /// </summary>
+        public bool SoftwareReverseAzimuth
+        {
+            get => GetBool(nameof(SoftwareReverseAzimuth), false);
+            set => SetBool(value);
+        }
+
+        /// <summary>
+        /// Đảo dấu (software) cho trục Altitude: lật hướng các lệnh dịch chuyển do plugin gửi trong
+        /// phiên external correction. Không ghi gì xuống FRAM/firmware - khác "Reverse Direction"
+        /// trong tab CONFIGURATION (đảo chiều ở firmware, ghi AlRD:).
+        /// </summary>
+        public bool SoftwareReverseAltitude
+        {
+            get => GetBool(nameof(SoftwareReverseAltitude), false);
+            set => SetBool(value);
+        }
+
+        /// <summary>Bù backlash trục Azimuth (arcmin): vượt target rồi quay lại một đoạn nhỏ.</summary>
+        public double CorrectionAzBacklashArcMin
+        {
+            get => GetDouble(nameof(CorrectionAzBacklashArcMin), 0);
+            set => SetDouble(value);
+        }
+
+        /// <summary>Trần thời gian của cả phiên sửa tự động (giây).</summary>
+        public int CorrectionTimeoutSec
+        {
+            get => GetInt(nameof(CorrectionTimeoutSec), 1800);
+            set => SetInt(value);
+        }
+
+        /// <summary>
+        /// Số lần đo liên tiếp đạt tolerance trước khi yêu cầu TPPA chốt phiên. TPPA vẫn verify lại
+        /// bằng policy của nó, nên giá trị này chỉ là điều kiện kích hoạt phía controller.
+        /// </summary>
+        public int CorrectionConsecutiveToFinish
+        {
+            get => GetInt(nameof(CorrectionConsecutiveToFinish), 2);
+            set => SetInt(value);
         }
 
         private string GetString(string propertyName, string defaultValue)

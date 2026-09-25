@@ -4,8 +4,8 @@ param([string]$NinaDir = '')
 
 $ErrorActionPreference = 'Continue'
 
-$dll = Join-Path $env:LOCALAPPDATA 'NINA\Plugins\3.0.0\MLAstroRPA-TPPA\NINA.Plugins.MLAstroRPA_TPPA.dll'
-if (-not (Test-Path $dll)) { $dll = Join-Path (Get-Location) 'bin\Release\net8.0-windows7.0\NINA.Plugins.MLAstroRPA_TPPA.dll' }
+$dll = Join-Path $env:LOCALAPPDATA 'NINA\Plugins\3.0.0\MLAstroRPA\NINA.Plugins.MLAstroRPA.dll'
+if (-not (Test-Path $dll)) { $dll = Join-Path (Get-Location) 'bin\Release\net8.0-windows7.0\NINA.Plugins.MLAstroRPA.dll' }
 Write-Host "DLL      : $dll"
 Write-Host "exists   : $(Test-Path $dll)"
 
