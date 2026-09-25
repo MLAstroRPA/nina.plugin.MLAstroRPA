@@ -4,12 +4,12 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Settings;
 using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Plugin.Interfaces;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>
     /// Transport and handshake with the Three Point Polar Alignment plugin. It owns the subscription to

@@ -1,6 +1,6 @@
 using System;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>Direction of a Broker log line.</summary>
     public enum BrokerLogDirection

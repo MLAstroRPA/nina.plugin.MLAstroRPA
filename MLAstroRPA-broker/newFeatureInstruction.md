@@ -63,7 +63,7 @@ Giữ nguyên 4 topic cũ (`..._DockablePolarAlignmentVM_StartAlignment` / `_Sto
 | Kind | Chiều | Field chính |
 |---|---|---|
 | `Capabilities` | TPPA → MLAstro | interface version, danh sách Kind, TPPA version, TTL/timeout mặc định |
-| `Measurement` | TPPA → MLAstro | `MeasurementId`, timestamp, `Status` (Valid/SolveFailed/Unstable), `AzimuthErrorDeg`, `AltitudeErrorDeg`, `TotalErrorDeg`, `AzimuthErrorArcMin`, `AltitudeErrorArcMin`, `AzDirection` (Left/Right), `AltDirection` (Up/Down), `ToleranceReached`, `ToleranceArcMin`, `CalculationMode`, `IsFirstMeasurement` |
+| `Measurement` | TPPA → MLAstro | `MeasurementId`, timestamp, `Status` (Valid/Unstable/CaptureFailed), `AzimuthErrorArcMin`, `AltitudeErrorArcMin` (có dấu), `Northern`, `ToleranceReached`, `ToleranceArcMin`, `CalculationMode`, `IsFirstMeasurement` |
 | `BeginAdjustment` | MLAstro → TPPA | `MeasurementId` (muốn sửa theo lần đo nào) |
 | `AdjustmentGranted` | TPPA → MLAstro | `WindowId`, `MeasurementId`, `MaxWindowMs` |
 | `RequestMeasurement` | MLAstro → TPPA | `WindowId`, `StationaryAndSettled=true` ⇒ TPPA đóng window + chụp lần mới |
@@ -80,7 +80,7 @@ Giữ đúng đề xuất của họ (Kind-based) để PR dễ được nhận.
 
 - Gửi **cả độ và arcmin** để MLAstro không phải tự đổi (tránh lệch làm tròn).
 - Số gửi đi = **đúng** `PolarErrorDetermination.CurrentMountAxis{Azimuth,Altitude}Error.Degree` đang dùng cho UI/vòng lặp.
-- Kèm `AzDirection`/`AltDirection` lấy từ `TPAPAVM.CurrentMountAxis{Azimuth,Altitude}ErrorDirection` (đã có sẵn, `TPAPAVM.cs:912-940`) → MLAstro không phải parse text UI, và **không tự suy dấu**.
+- Hướng sửa **không gửi qua payload**: MLAstro tự suy từ dấu của `AzimuthErrorArcMin`/`AltitudeErrorArcMin` + cờ `Northern` (az dương = Left, âm = Right; alt dương = Down ở bắc bán cầu, Up ở nam) — 2 property dẫn xuất trong `TppaMeasurement`.
 - `CalculationMode`: legacy / continuous (estimator) — chỉ để log/hiển thị, không đổi hành vi.
 
 ### 1.5 An toàn & vòng đời (bắt buộc)
@@ -152,8 +152,8 @@ Không sửa OAPA/UPAS/Avalon, không sửa estimator/`AutomatedAdjustmentContro
 1. Nhận `Measurement` (valid) → log + hiển thị.
 2. `Adjusting=true` (kèm `MeasurementId`) **trước khi** quay motor (để TPPA ngừng chụp ngay).
 3. Tính lệnh:
-   - `azArcMin = AzimuthErrorArcMin × sign(AzDirection) × SafetyFactor`
-   - `altArcMin = AltitudeErrorArcMin × sign(AltDirection) × SafetyFactor` (+ overshoot nếu bật cho hướng hiện tại)
+   - `azArcMin = |AzimuthErrorArcMin| × SafetyFactor` (dấu chỉ chọn hướng: âm = Right, dương = Left)
+   - `altArcMin = |AltitudeErrorArcMin| × SafetyFactor` (+ overshoot nếu bật cho hướng hiện tại)
    - Mode `Both` ⇒ `AlignBothAxes(az, alt)` (1 lệnh); `Auto` ⇒ chỉ trục lớn hơn.
    - Reverse Az/Alt ⇒ đảo dấu; kẹp biên an toàn (max step) để tránh nhảy lớn khi số liệu lỗi.
 4. Chờ `ALIGN_COMPLETED` (+ settle) → `Adjusting=false` + `ExpectCompletionWithinMs` đã dùng.

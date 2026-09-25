@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 using NINA.Core.Utility;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
-using MLAstro_Robotic_Polar_Alignment.Dockables;
-using MLAstro_Robotic_Polar_Alignment.Plugin;
-using MLAstro_Robotic_Polar_Alignment.Services;
+using MLAstroRPA.Dockables;
+using MLAstroRPA.Plugin;
+using MLAstroRPA.Services;
 
-namespace NINA.Plugins.PolarAlignment {
+namespace NINA.Plugins.MLAstroRPA {
     /// <summary>
     /// Single IPluginManifest of the MLAstro plugin (hardware control + dockables + options page).
     /// The TPPA (Three Point Polar Alignment) part has been removed: TPPA is now a separate plugin and
@@ -28,7 +28,7 @@ namespace NINA.Plugins.PolarAlignment {
         public MLAstroController MLAstro { get; private set; }
 
         [ImportingConstructor]
-        public MLAstroPlugin(global::MLAstro_Robotic_Polar_Alignment.Settings.PluginSettings settings,
+        public MLAstroPlugin(global::MLAstroRPA.Settings.PluginSettings settings,
             SerialConnectionService serialConnectionService,
             PolarAlignmentDockVM polarAlignmentDockVM,
             IMessageBroker messageBroker) {

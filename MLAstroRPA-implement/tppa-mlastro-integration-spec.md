@@ -98,7 +98,7 @@ I would include the following in `MeasurementResult`:
 
 - A measurement ID, observation time and result status: valid, solve failed or unstable.
 - `AltitudeError`, `AzimuthError` and `TotalError`, keeping the existing degree units and sign conventions.
-- Explicit correction directions, so your plugin can interpret the result without parsing UI text.
+- The hemisphere flag, so the plugin can turn the signed errors into up/down moves itself.
 - The calculation mode configured in TPPA, as informational metadata.
 
 Failed results would contain no actionable error values. TPPA would validate the measurement ID against its latest usable sample before granting adjustment. Selecting or implementing a calculation model would remain inside TPPA.

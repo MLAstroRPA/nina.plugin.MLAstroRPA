@@ -12,10 +12,10 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using MLAstro_Robotic_Polar_Alignment.Settings;
-using MLAstro_Robotic_Polar_Alignment.Services;
+using MLAstroRPA.Settings;
+using MLAstroRPA.Services;
 
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 { 
     [Export]
     [PartCreationPolicy(CreationPolicy.Shared)]
@@ -118,6 +118,27 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
 
         // Flag to pause telemetry sync for alignment error fields when the user is editing
         private bool _isEditingAlignment = false;
+
+        /// <summary>
+        /// True khi con trỏ đang ở trong một ô D/M/S của dock (Tag "rel"/"az"/"alt"). Dùng làm chốt an
+        /// toàn thứ hai cho luật "đang sửa thì không ghi đè bằng telemetry": cờ Start/EndEditing có thể
+        /// lệch trạng thái (focus vào ô bằng chuột rồi rời đi theo cách không phát LostKeyboardFocus).
+        /// </summary>
+        private static bool IsDmsInputFocused()
+        {
+            // Telemetry được bơm từ luồng nền của cổng COM. WPF yêu cầu truy cập InputManager/Keyboard
+            // trên UI thread; gọi từ luồng nền có thể ném exception ⇒ phần còn lại của telemetry bị bỏ
+            // qua (mất cập nhật trạng thái motion/jog ⇒ dock khoá điều khiển tay). Vì vậy chỉ kiểm tra
+            // khi đang ở UI thread.
+            var app = Application.Current;
+            if (app == null || !app.Dispatcher.CheckAccess())
+            {
+                return false;
+            }
+
+            var tag = (Keyboard.FocusedElement as FrameworkElement)?.Tag as string;
+            return tag == "deg" || tag == "min" || tag == "sec" || tag == "az" || tag == "alt";
+        }
 
         // Alarm History (industrial HMI style): one row per driver error/warning code,
         // showing the activation time and (once cleared) the end time on the SAME row.
@@ -361,18 +382,29 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
         }
 
         /// <summary>
-        /// Send relative degrees to hardware immediately
+        /// End editing relative values - resume telemetry sync. Chỉ gọi khi focus rời khỏi các ô D/M/S
+        /// (xem OnDockLostKeyboardFocus ở code-behind).
+        /// </summary>
+        public void EndEditingRelative()
+        {
+            _isEditingRelativeValues = false;
+        }
+
+        /// <summary>
+        /// Send relative degrees to hardware immediately. KHÔNG nhả pause telemetry ở đây: người dùng có
+        /// thể đang tiếp tục gõ trong ô, nhả sớm thì telemetry sẽ ghi đè từng phím vừa gõ. Pause chỉ được
+        /// nhả khi focus rời khỏi các ô D/M/S.
         /// </summary>
         public void SendRelativeDegrees()
         {
+            // Nhả pause sau khi đã gửi: telemetry (echo từ thiết bị) phải chạy lại để UI khớp thiết bị.
+            // Lúc người dùng còn đang gõ trong ô, IsDmsInputFocused() vẫn chặn telemetry ghi đè.
             _isEditingRelativeValues = false;
             SendCommand($"ReDe:{_relativeDegrees}\n");
             Logger.Info($"[MLAstro] Sent ReDe:{_relativeDegrees}");
         }
 
-        /// <summary>
-        /// Send relative minutes to hardware immediately
-        /// </summary>
+        /// <summary>Send relative minutes to hardware immediately (xem ghi chú ở SendRelativeDegrees).</summary>
         public void SendRelativeMinutes()
         {
             _isEditingRelativeValues = false;
@@ -380,9 +412,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             Logger.Info($"[MLAstro] Sent ReAM:{_relativeMinutes}");
         }
 
-        /// <summary>
-        /// Send relative seconds to hardware immediately
-        /// </summary>
+        /// <summary>Send relative seconds to hardware immediately (xem ghi chú ở SendRelativeDegrees).</summary>
         public void SendRelativeSeconds()
         {
             _isEditingRelativeValues = false;
@@ -819,6 +849,13 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
         public ICommand MoveRightCommand { get; }
         public ICommand StopCommand { get; }
         public ICommand ForceStopCommand { get; }
+
+        /// <summary>
+        /// Raised when the operator stops the axes from the dock (STOP or FORCE STOP). The external
+        /// correction session listens to it so a running TPPA session is cancelled instead of waiting for
+        /// a controller whose motors were just stopped.
+        /// </summary>
+        public event EventHandler? ManualStopRequested;
         public ICommand ResetErrorCommand { get; }
 
         // Home Commands
@@ -838,17 +875,18 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
         #endregion
 
         [ImportingConstructor]
-        public PolarAlignmentDockVM(IProfileService profileService, PluginSettings settings, SerialConnectionService serialService)
+        public PolarAlignmentDockVM(IProfileService profileService, PluginSettings settings)
             : base(profileService)
         {
-            Title = "MLAstro RPA Control";
+            // Tiêu đề dock phải NÓI RÕ plugin nào: bản MLAstroRPA+TPPA cũng có dock cùng tên gốc
+            // "MLAstro RPA Control", hai plugin cùng cài thì không thể phân biệt bằng mắt.
+            Title = "MLAstro RPA Control (MLAstroRPA)";
             Logger.Info("[MLAstro] PolarAlignmentDockVM created");
 
             // Register this instance for cleanup during plugin teardown
             lock (_instanceLock)
             {
                 _instance = this;
-                Logger.Info($"[MLAstro] PolarAlignmentDockVM Instance registered: {this.GetHashCode()}");
             }
 
             _settings = settings;
@@ -856,7 +894,6 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             // Use singleton instance to ensure we subscribe to the correct instance
             // MEF creates separate instances for different components, so we must use the singleton
             _serialService = SerialConnectionService.Instance;
-            Logger.Info($"[MLAstro] Using singleton SerialConnectionService (injected: {serialService.GetHashCode()}, singleton: {_serialService.GetHashCode()})");
 
             // Initialize Commands
 #pragma warning disable CS0618 // NINA.RelayCommand is obsolete, but intentionally kept: it hooks CommandManager.RequerySuggested
@@ -899,8 +936,6 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
 
             FirmwareVersion = _serialService.FirmwareVersion;
             UpdateApStatus();   // dòng "AP: Connected/Ready/Error" theo trạng thái hiện tại
-
-            Logger.Info($"[MLAstro] ViewModel subscribed to SerialConnectionService singleton (instance: {_serialService.GetHashCode()})");
         }
 
         private void OnTelemetryDataReceived(object? sender, TelemetryDataEventArgs e)
@@ -953,7 +988,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             }
 
             // Update relative values only when changed (skip if user is editing)
-            if (e.Data.IsRelativeMode && !_isEditingRelativeValues)
+            if (e.Data.IsRelativeMode && !_isEditingRelativeValues && !IsDmsInputFocused())
             {
                 RelativeDegrees = e.Data.RelativeDegrees;
                 RelativeMinutes = e.Data.RelativeMinutes;
@@ -964,7 +999,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             HomedStatus = e.Data.IsHomed ? "Yes" : "No";
 
             // Skip alignment sync if the user is editing OR modify mode is ON OR automated adjustment is ON
-            if (!_isEditingAlignment && !_isAlignmentModifyMode && !_isAutomatedAdjustment)
+            if (!_isEditingAlignment && !IsDmsInputFocused() && !_isAlignmentModifyMode && !_isAutomatedAdjustment)
             {
                 // Sync alignment directions from hardware (using flag to prevent sending command back)
                 _isSyncingFromTelemetry = true;
@@ -1388,6 +1423,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             SendCommand("STOP:1\n");
             // Nếu TPPA đang giữ quyền điều khiển (external control) thì báo TPPA dừng PA ngay.
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro STOP pressed");
+            // Phiên qua broker: báo controller để nó gửi Cancel cho TPPA ngay.
+            ManualStopRequested?.Invoke(this, EventArgs.Empty);
         }
 
         public void ForceStop()
@@ -1398,6 +1435,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             StopJogMovement();
             SendCommand("ESTOP:1\n");
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro FORCE-STOP pressed");
+            // Phiên qua broker: FORCE-STOP cũng phải kết thúc phiên TPPA.
+            ManualStopRequested?.Invoke(this, EventArgs.Empty);
         }
 
         public void StopJogMovement()
@@ -1488,6 +1527,12 @@ namespace MLAstro_Robotic_Polar_Alignment.Dockables
             {
                 _serialService.Send(command);
                 Logger.Info($"[MLAstro] Sent command: {command.TrimEnd()}");
+            }
+            else
+            {
+                // Trước đây rơi vào nhánh này là IM LẶNG ⇒ nút vẫn bấm được nhưng không có gì xuống firmware,
+                // rất khó chẩn đoán (ví dụ khi có 2 plugin MLAstro cùng cài, dock của plugin KHÔNG giữ cổng COM).
+                Logger.Warning($"[MLAstro] Command dropped - link not connected: {command.TrimEnd()}");
             }
         }
 

@@ -2,10 +2,10 @@ using System;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
-using MLAstro_Robotic_Polar_Alignment.Services;
+using MLAstroRPA.Services;
 using NINA.Core.Utility;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>
     /// Thin wrapper around the MLAstro hardware link used by the external correction runner. It reuses
@@ -73,7 +73,17 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                     return false;
                 }
 
-                var reported = await completion.Task.ConfigureAwait(false);
+                string reported;
+                try
+                {
+                    reported = await completion.Task.ConfigureAwait(false);
+                }
+                catch (TaskCanceledException)
+                {
+                    // Aborted on purpose (pause or stop): the caller decides what happens next.
+                    Logger.Warning("[MLAstro][Broker] ALIGN was aborted before the firmware reported completion.");
+                    return false;
+                }
                 Logger.Info($"[MLAstro][Broker] ALIGN completed ({reported}).");
                 return true;
             }
@@ -126,6 +136,35 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
             var minutes = (int)(remaining / 60);
             var seconds = (int)(remaining % 60);
             return (degrees, minutes, seconds);
+        }
+
+        /// <summary>True while an ALIGN move is waiting for its firmware completion token.</summary>
+        public bool IsMoving
+        {
+            get { lock (_gate) { return _pendingCompletion != null; } }
+        }
+
+        /// <summary>
+        /// Releases a caller that is waiting for a completion token without sending anything to the
+        /// hardware, so an aborted move does not linger in its 90 s timeout.
+        /// </summary>
+        public void AbortPendingMove()
+        {
+            TaskCompletionSource<string> pending;
+            lock (_gate) { pending = _pendingCompletion; }
+            pending?.TrySetCanceled();
+        }
+
+        /// <summary>
+        /// Stops the axes only when a move is in progress, for a pause: an idle firmware must not receive
+        /// a STOP. Returns true when a stop was actually sent.
+        /// </summary>
+        public async Task<bool> StopMoveAsync()
+        {
+            if (!IsMoving) { return false; }
+            AbortPendingMove();
+            await StopAsync().ConfigureAwait(false);
+            return true;
         }
 
         /// <summary>Sends an immediate stop to the firmware.</summary>

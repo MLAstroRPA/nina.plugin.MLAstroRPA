@@ -6,10 +6,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Settings;
 using NINA.Core.Utility;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>
     /// Runs the correction loop for one TPPA session: receives a measurement, decides the move, holds
@@ -51,6 +51,14 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         private int _unusableMeasurements;
         private int _moveCounter;
         private string _statusText = "Idle";
+        private bool _paused;
+        private bool _resumeNeedsMeasurement;
+
+        /// <summary>True while TPPA reported that the operator paused the run.</summary>
+        private bool IsPaused
+        {
+            get { lock (_gate) { return _paused; } }
+        }
 
         public ExternalCorrectionRunner(TppaBrokerClient client, HardwareAligner aligner, PluginSettings settings)
         {
@@ -158,6 +166,12 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                     _ = HandleStopRequestAsync(envelope);
                     return;
 
+                case TppaBrokerKind.PauseRequested:
+                    // Same reason: a pause has to stop the axes while a move is running, so it must not
+                    // wait behind the worker queue.
+                    _ = HandlePauseRequestAsync(envelope);
+                    return;
+
                 case TppaBrokerKind.SessionEnded:
                     CancelSessionInternal();
                     Enqueue(envelope);
@@ -206,6 +220,9 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
             var stopStatus = TppaHardwareStopStatus.Ok;
             try
             {
+                // The operator asked for a stop: STOP goes to the firmware unconditionally, and the move
+                // that is waiting for its completion token is released at the same time.
+                _aligner.AbortPendingMove();
                 if (_aligner.IsConnected)
                 {
                     await _aligner.StopAsync().ConfigureAwait(false);
@@ -227,6 +244,71 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                          .ConfigureAwait(false);
 
             SetStatus("Stopped by TPPA");
+        }
+
+        /// <summary>
+        /// The operator paused or resumed the run in TPPA. A pause stops the axes - only when they are
+        /// really moving - and blocks new moves; a resume asks for the measurement the pause interrupted,
+        /// because TPPA is waiting for a request that would otherwise never arrive.
+        /// </summary>
+        private async Task HandlePauseRequestAsync(ExternalCorrectionEnvelope envelope)
+        {
+            var request = envelope.PayloadAs<TppaPauseRequest>();
+            var paused = request?.Paused == true;
+            var reason = request?.Reason ?? (paused ? TppaBrokerReason.Paused : TppaBrokerReason.Resumed);
+
+            lock (_gate)
+            {
+                _paused = paused;
+            }
+
+            if (paused)
+            {
+                Logger.Info($"[MLAstro][Broker] TPPA paused the run ({reason}).");
+                SetStatus("Paused by TPPA");
+
+                try
+                {
+                    var stopped = await _aligner.StopMoveAsync().ConfigureAwait(false);
+                    if (stopped)
+                    {
+                        // The move we were running is gone: TPPA expects a fresh request after the resume.
+                        lock (_gate)
+                        {
+                            _resumeNeedsMeasurement = true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"[MLAstro][Broker] Failed to stop the move for the pause: {ex.Message}");
+                }
+                return;
+            }
+
+            Logger.Info("[MLAstro][Broker] TPPA resumed the run.");
+
+            bool needsMeasurement;
+            string sessionId;
+            lock (_gate)
+            {
+                needsMeasurement = _resumeNeedsMeasurement;
+                _resumeNeedsMeasurement = false;
+                sessionId = _sessionId;
+            }
+
+            SetStatus("Waiting for the next measurement");
+
+            if (!needsMeasurement || sessionId == null || !IsSessionRunning) { return; }
+
+            await _client.PublishAsync(TppaBrokerKind.RequestMeasurement,
+                                       sessionId,
+                                       new TppaMeasurementRequest
+                                       {
+                                           WindowId = null,
+                                           StationaryAndSettled = true,
+                                           Reason = TppaBrokerReason.Resumed
+                                       }).ConfigureAwait(false);
         }
 
         // ===== worker =====
@@ -397,9 +479,19 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
             }
 
             Logger.Info($"[MLAstro][Broker] Measurement #{measurement.SampleIndex}: az {measurement.AzimuthErrorArcMin:0.##}' " +
-                        $"({measurement.AzimuthDirection}), alt {measurement.AltitudeErrorArcMin:0.##}' ({measurement.AltitudeDirection}), " +
+                        $"({measurement.AzimuthDirectionValue}), alt {measurement.AltitudeErrorArcMin:0.##}' ({measurement.AltitudeDirectionValue}), " +
                         $"total {measurement.TotalErrorArcMin:0.##}', tolerance {measurement.ToleranceArcMin:0.##}', " +
                         $"status {measurement.Status}.");
+
+            if (IsPaused)
+            {
+                // TPPA stopped capturing, so a move now would turn the axes for nobody. The sample is
+                // re-requested when the operator resumes.
+                Logger.Info("[MLAstro][Broker] Measurement ignored while the run is paused.");
+                lock (_gate) { _resumeNeedsMeasurement = true; }
+                SetStatus("Paused by TPPA");
+                return;
+            }
 
             var settings = ExternalCorrectionSettings.FromPluginSettings(_settings);
             var warnings = new List<string>();
@@ -493,6 +585,16 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                 if (token.IsCancellationRequested)
                 {
                     Logger.Info("[MLAstro][Broker] Move aborted because the session was cancelled.");
+                    return;
+                }
+
+                if (IsPaused)
+                {
+                    // Paused mid-move: the operator stopped the axes on purpose, so this is not a
+                    // hardware fault. A fresh measurement is requested when the run resumes.
+                    Logger.Info("[MLAstro][Broker] Move aborted because the run was paused.");
+                    lock (_gate) { _resumeNeedsMeasurement = true; }
+                    SetStatus("Paused by TPPA");
                     return;
                 }
 
@@ -667,6 +769,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                 _moveCounter = 0;
                 _windowId = null;
                 _lastMeasurement = null;
+                _paused = false;
+                _resumeNeedsMeasurement = false;
             }
             ExternalCorrectionEngine.ResetBacklashHistory();
         }
@@ -699,6 +803,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
                 _sessionCts = null;
                 _windowId = null;
                 _windowGrant = null;
+                _paused = false;
+                _resumeNeedsMeasurement = false;
             }
 
             try { cts?.Cancel(); } catch (ObjectDisposedException) { }

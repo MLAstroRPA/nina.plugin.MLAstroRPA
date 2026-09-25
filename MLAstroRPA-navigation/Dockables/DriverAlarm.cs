@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel;
 using System.Windows.Media;
 
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 {
     /// <summary>
     /// One row in the industrial-HMI-style alarm history: a firmware error/warning code

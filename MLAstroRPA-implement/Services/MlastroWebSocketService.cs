@@ -1,5 +1,5 @@
-using MLAstro_Robotic_Polar_Alignment.Dockables;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Dockables;
+using MLAstroRPA.Settings;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using System;
@@ -16,7 +16,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace MLAstro_Robotic_Polar_Alignment.Services
+namespace MLAstroRPA.Services
 {
     /// <summary>
     /// Transport WIRELESS cho MLAstroRPA: kết nối tới thiết bị qua WebSocket

@@ -1,4 +1,4 @@
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 {
     public enum PolarAlignmentDataSourceMode
     {

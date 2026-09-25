@@ -1,8 +1,8 @@
 ﻿<ResourceDictionary
-    x:Class="NINA.Plugins.PolarAlignment.Options"
+    x:Class="NINA.Plugins.MLAstroRPA.Options"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:view="clr-namespace:MLAstro_Robotic_Polar_Alignment.Dockables">
+    xmlns:view="clr-namespace:MLAstroRPA.Dockables">
     <!--
         MLAstro-only options page (TPPA tab removed - TPPA is a separate plugin now).
         Tab bodies come from the MLAstroOptions module (CONTROL / CONNECTION / CONFIGURATION) and are
@@ -66,19 +66,19 @@
                 </TabControl.Template>
                 <TabItem Header="CONTROL">
                     <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaControlBody}" />
+                                    ContentTemplate="{DynamicResource MlaRpaControlBody}" />
                 </TabItem>
                 <TabItem Header="CONNECTION">
                     <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaConnectionBody}" />
+                                    ContentTemplate="{DynamicResource MlaRpaConnectionBody}" />
                 </TabItem>
                 <TabItem Header="CONFIGURATION">
                     <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaConfigurationBody}" />
+                                    ContentTemplate="{DynamicResource MlaRpaConfigurationBody}" />
                 </TabItem>
                 <TabItem Header="SOFTWARE SETTING">
                     <ContentControl Content="{Binding MLAstro}"
-                                    ContentTemplate="{DynamicResource MlaSoftwareBody}" />
+                                    ContentTemplate="{DynamicResource MlaRpaSoftwareBody}" />
                 </TabItem>
             </TabControl>
         </DockPanel>

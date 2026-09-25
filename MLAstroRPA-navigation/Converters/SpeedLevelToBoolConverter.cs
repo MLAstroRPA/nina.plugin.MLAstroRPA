@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace MLAstro_Robotic_Polar_Alignment.Converters
+namespace MLAstroRPA.Converters
 {
     /// <summary>
     /// Converts CurrentSpeed and CommandParameter to bool for button selection state.

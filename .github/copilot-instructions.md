@@ -10,7 +10,11 @@
   integration lives in `MLAstroRPA-broker\Broker\` (`TppaBrokerClient`, `TppaBrokerContract`,
   `TppaBrokerPayloads`, `ExternalCorrectionRunner`, `ExternalCorrectionEngine`, `HardwareAligner`)
   and `MLAstroRPA-implement\`.
-- MLAstro-origin code keeps the `MLAstro_Robotic_Polar_Alignment.*` namespaces (folder `MLAstroRPA-navigation\`).
+- Code namespaces are `MLAstroRPA.*` (folder `MLAstroRPA-navigation\`) and `NINA.Plugins.MLAstroRPA.*`
+  (manifest/options). Keep them unique from the merged `MLAstroRPA+TPPA` plugin: NINA merges every plugin
+  `ResourceDictionary` into `Application.Current.Resources` and resolves views by key
+  (`<plugin name>_Options`, `<type full name>_Dockable`), so a duplicate key or type name silently lets the
+  other plugin override this one's templates (fixed in 2.2.2.0 by renaming namespaces + keys).
 - There is exactly ONE `IPluginManifest`: `MLAstroPlugin` (root `MLAstroPlugin.cs`). The MLAstro
   controller (`MLAstroRPA-navigation\Plugin\MLAstroController.cs`) is NOT a manifest - it is owned by
   `MLAstroPlugin.MLAstro`.

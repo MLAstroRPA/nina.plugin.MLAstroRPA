@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 {
     /// <summary>Mức độ của một dòng System log (giống class CSS của Web UI).</summary>
     public enum SystemLogLevel

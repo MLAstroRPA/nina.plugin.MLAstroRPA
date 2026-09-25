@@ -15,10 +15,10 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Settings;
 using NINA.Core.Utility;
  
-namespace MLAstro_Robotic_Polar_Alignment.Services
+namespace MLAstroRPA.Services
 {
     [Export(typeof(SerialConnectionService))]
     [PartCreationPolicy(CreationPolicy.Shared)]
@@ -37,10 +37,6 @@ namespace MLAstro_Robotic_Polar_Alignment.Services
         public const int PollingIntervalMaxMilliseconds = 1000;
         private int _pollingIntervalMilliseconds = 300;
 
-        // Track all instances to control timers globally
-        private static readonly List<SerialConnectionService> _allInstances = new();
-        private static readonly object _instancesLock = new();
-
         // Static flag to pause query on ALL instances
         private static bool _pauseQueryGlobal;
 
@@ -55,7 +51,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Services
             {
                 if (_pauseQueryGlobal == value) return;
                 _pauseQueryGlobal = value;
-                Logger.Info($"[MLAstro] PauseQueryGlobal set to: {value}, total instances: {_allInstances.Count}");
+                Logger.Info($"[MLAstro] PauseQueryGlobal set to: {value}");
                 try { PauseQueryChanged?.Invoke(value); } catch { }
             }
         }
@@ -373,12 +369,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Services
             _handshakeTimeoutMilliseconds = Math.Clamp(_settings.HandshakeTimeoutMilliseconds, HandshakeTimeoutMinMilliseconds, HandshakeTimeoutMaxMilliseconds);
             _pollingIntervalMilliseconds = Math.Clamp(_settings.PollingIntervalMilliseconds, PollingIntervalMinMilliseconds, PollingIntervalMaxMilliseconds);
 
-            // Register this instance
-            lock (_instancesLock)
-            {
-                _allInstances.Add(this);
-                Logger.Info($"[MLAstro] SerialConnectionService CREATED: instance={this.GetHashCode()}, total instances={_allInstances.Count}");
-            }
+            Logger.Info("[MLAstro] SerialConnectionService created");
 
             // Register as singleton if not already set
             lock (_instanceLock)
@@ -2082,7 +2073,6 @@ namespace MLAstro_Robotic_Polar_Alignment.Services
                             if (telemetryData != null)
                             {
                                 Logger.Info($"[MLAstro] Telemetry parsed - Status: {telemetryData.Status}, AzPos: {telemetryData.AzPosition}, AltPos: {telemetryData.AltPosition}");
-                                Logger.Info($"[MLAstro] Raising TelemetryDataReceived event (instance: {this.GetHashCode()}, subscribers: {TelemetryDataReceived?.GetInvocationList().Length ?? 0})");
                                 InvokeOnUiThread(() => TelemetryDataReceived?.Invoke(this, new TelemetryDataEventArgs(telemetryData)));
                             }
                             else
@@ -2149,6 +2139,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Services
         {
             InvokeOnUiThread(() =>
             {
+
                 // Mới nhất lên ĐẦU (index 0), cũ nhất dần về CUỐI.
                 TerminalEntries.Insert(0, entry);
                 while (TerminalEntries.Count > MaxTerminalEntries)

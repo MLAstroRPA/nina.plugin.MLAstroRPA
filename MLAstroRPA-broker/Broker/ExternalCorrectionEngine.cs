@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Settings;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>Which axes a single correction step moves.</summary>
     public enum ExternalAxisMode

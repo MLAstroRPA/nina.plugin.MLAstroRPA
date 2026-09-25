@@ -1,6 +1,6 @@
 using System;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>
     /// Capabilities published by TPPA in reply to our announcement. Every tunable value used by this
@@ -64,9 +64,6 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         public int SampleIndex { get; set; }
         public bool IsFirstMeasurement { get; set; }
         public string Status { get; set; }
-        public double AzimuthErrorDeg { get; set; }
-        public double AltitudeErrorDeg { get; set; }
-        public double TotalErrorDeg { get; set; }
         public double AzimuthErrorArcMin { get; set; }
         public double AltitudeErrorArcMin { get; set; }
         public double TotalErrorArcMin { get; set; }
@@ -74,19 +71,39 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         public bool ToleranceReached { get; set; }
         public bool AutoFinishConditionMet { get; set; }
         public int ConsecutiveBelowTolerance { get; set; }
-        public string AzimuthDirection { get; set; }
-        public string AltitudeDirection { get; set; }
         public bool Northern { get; set; }
         public bool ContinuousEstimation { get; set; }
         public DateTimeOffset TimestampUtc { get; set; }
 
         public bool IsUsable => string.Equals(Status, TppaMeasurementStatus.Valid, StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Correction direction derived from the signed error, because TPPA publishes the arcminutes
+        /// only: a positive azimuth error always means "move left", a negative one "move right".
+        /// </summary>
         public ExternalAzimuthDirection AzimuthDirectionValue =>
-            Enum.TryParse<ExternalAzimuthDirection>(AzimuthDirection, out var value) ? value : ExternalAzimuthDirection.None;
+            AzimuthErrorArcMin > 0 ? ExternalAzimuthDirection.Left
+            : AzimuthErrorArcMin < 0 ? ExternalAzimuthDirection.Right
+            : ExternalAzimuthDirection.None;
 
+        /// <summary>
+        /// Altitude direction derived from the signed error and the hemisphere: a positive error means
+        /// "move down" in the northern hemisphere and "up" in the southern one.
+        /// </summary>
         public ExternalAltitudeDirection AltitudeDirectionValue =>
-            Enum.TryParse<ExternalAltitudeDirection>(AltitudeDirection, out var value) ? value : ExternalAltitudeDirection.None;
+            AltitudeErrorArcMin > 0 ? (Northern ? ExternalAltitudeDirection.Down : ExternalAltitudeDirection.Up)
+            : AltitudeErrorArcMin < 0 ? (Northern ? ExternalAltitudeDirection.Up : ExternalAltitudeDirection.Down)
+            : ExternalAltitudeDirection.None;
+    }
+
+    /// <summary>
+    /// Payload of <c>PauseRequested</c>: the operator paused or resumed the run in TPPA. While paused we
+    /// must not start a move and have to stop one that is in progress.
+    /// </summary>
+    public sealed class TppaPauseRequest
+    {
+        public bool Paused { get; set; }
+        public string Reason { get; set; }
     }
 
     /// <summary>Payload of <c>BeginAdjustment</c>: we want to hold the capture for a move sequence.</summary>

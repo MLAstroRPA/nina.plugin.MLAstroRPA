@@ -4,7 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 {
     public partial class PolarAlignmentDockable : UserControl
     {

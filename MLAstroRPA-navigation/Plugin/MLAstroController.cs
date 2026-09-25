@@ -8,22 +8,22 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using MLAstro_Robotic_Polar_Alignment.Broker;
-using MLAstro_Robotic_Polar_Alignment.Dockables;
-using MLAstro_Robotic_Polar_Alignment.Services;
-using MLAstro_Robotic_Polar_Alignment.Settings;
+using MLAstroRPA.Broker;
+using MLAstroRPA.Dockables;
+using MLAstroRPA.Services;
+using MLAstroRPA.Settings;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
  
-namespace MLAstro_Robotic_Polar_Alignment.Plugin
+namespace MLAstroRPA.Plugin
 {
     /// <summary>
     /// Merged MLAstroRPA+TPPA plugin: this is no longer a NINA plugin manifest. It is the MLAstro
     /// options/state controller that backs the CONTROL / CONNECTION / CONFIGURATION tabs of the
     /// combined plugin's options page. Owned (and disposed) by
-    /// NINA.Plugins.PolarAlignment.PolarizationPlugin (the single IPluginManifest of this assembly).
+    /// NINA.Plugins.MLAstroRPA.PolarizationPlugin (the single IPluginManifest of this assembly).
     /// </summary>
     public class MLAstroController : INotifyPropertyChanged, IDisposable
     {
@@ -649,6 +649,28 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             }
         }
 
+        /// <summary>
+        /// STOP / FORCE STOP on the dock: the axes were stopped by hand, so the TPPA session has to end
+        /// instead of waiting for measurements that will never be requested.
+        /// </summary>
+        private void OnManualStopRequested(object? sender, EventArgs e)
+        {
+            AbortExternalSessionForHardware(TppaBrokerReason.UserStop, "STOP on the MLAstro dock");
+        }
+
+        /// <summary>
+        /// Ends a running TPPA session because the hardware side stopped on its own - a manual stop or a
+        /// link that dropped - so TPPA does not keep waiting for a controller that cannot move anymore.
+        /// </summary>
+        private void AbortExternalSessionForHardware(string reason, string detail)
+        {
+            var runner = _externalRunner;
+            if (runner == null || !runner.IsSessionRunning) { return; }
+
+            AppendBrokerLog($"{detail}: asking TPPA to cancel the session ({reason}).");
+            _ = runner.AbortSessionAsync(reason);
+        }
+
         private void InitializeExternalCorrection(IMessageBroker messageBroker)
         {
             if (messageBroker == null) { return; }
@@ -662,6 +684,12 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             _externalRunner.StatusChanged += (_, __) => RaiseBrokerStatus(appendLog: true);
             // Trong phiên TPPA, chỉ controller ngoài được quay motor: khoá điều khiển tay/auto của dock.
             _externalRunner.SessionActiveChanged += (_, active) => SetDockAutomatedAdjustment(active);
+            // STOP / FORCE STOP trên dock cũng phải kết thúc phiên TPPA: TPPA không được chờ một
+            // controller vừa dừng trục bằng tay.
+            if (_polarAlignmentDockVM != null)
+            {
+                _polarAlignmentDockVM.ManualStopRequested += OnManualStopRequested;
+            }
 
             if (Settings.TppaBrokerEnabled)
             {
@@ -919,6 +947,44 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
         }
 
         /// <summary>
+        /// Warns when a second MLAstro plugin DLL sits next to this one in the Plugins folder. Both may stay
+        /// installed, but each plugin opens its own COM port, so only the instance that owns the port can drive
+        /// the hardware.
+        /// </summary>
+        private void WarnIfDuplicatePluginInstalled(string pluginFolder)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(pluginFolder)) { return; }
+
+                var parent = Path.GetDirectoryName(pluginFolder);
+                if (string.IsNullOrEmpty(parent)) { return; }
+
+                var duplicates = new[]
+                {
+                    Path.Combine(parent, "MLAstroRPA-TPPA", "NINA.Plugins.MLAstroRPA_TPPA.dll"),
+                    Path.Combine(parent, "MLAstroRPA_TPPA", "NINA.Plugins.MLAstroRPA_TPPA.dll")
+                };
+
+                foreach (var duplicate in duplicates)
+                {
+                    if (!File.Exists(duplicate)) { continue; }
+
+                    Logger.Warning($"[MLAstro] Another MLAstro plugin is installed next to this one: {duplicate}. " +
+                                   "Both may stay installed, but each plugin opens its own COM port: connect and send " +
+                                   "commands from the same plugin (commands sent by a plugin that does not own the " +
+                                   "port are dropped).");
+
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+        }
+
+        /// <summary>
         /// Setup a FileSystemWatcher to detect when our plugin folder is being moved/deleted.
         /// NINA moves plugin folder to DeletionFolder when user clicks Uninstall.
         /// This allows us to close the dockable before the uninstall completes.
@@ -934,6 +1000,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
 
                 Logger.Info($"[MLAstro] Plugin assembly location: {assemblyLocation}");
                 Logger.Info($"[MLAstro] Plugin folder: {pluginFolder}");
+
+                WarnIfDuplicatePluginInstalled(pluginFolder);
 
                 // Only watch OUR plugin folder for file deletions
                 // This ensures we only trigger when MLAstro RPA plugin is being uninstalled
@@ -1623,6 +1691,17 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
             }
 
             if (string.IsNullOrEmpty(e.PropertyName)
+                || e.PropertyName == nameof(SerialConnectionService.IsConnected))
+            {
+                // Mất kết nối firmware giữa phiên TPPA: ta không còn điều khiển được trục nữa, nên
+                // báo TPPA cancel thay vì để nó chờ thêm measurement.
+                if (!_serialConnectionService.IsConnected)
+                {
+                    AbortExternalSessionForHardware(TppaBrokerReason.Disconnect, "Firmware link lost");
+                }
+            }
+
+            if (string.IsNullOrEmpty(e.PropertyName)
                 || e.PropertyName == nameof(SerialConnectionService.HandshakeStatus))
             {
                 OnPropertyChanged(nameof(SerialHandshakeStatus));
@@ -1737,7 +1816,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
                 try
                 {
                     var dockableVM = _polarAlignmentDockVM;
-                    Logger.Info($"[MLAstro] PolarAlignmentDockVM is {(dockableVM != null ? "not null (hash: " + dockableVM.GetHashCode() + ")" : "NULL")}");
+                    Logger.Info($"[MLAstro] PolarAlignmentDockVM is {(dockableVM != null ? "not null" : "NULL")}");
 
                     if (dockableVM != null)
                     {
@@ -1806,6 +1885,10 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
                 if (_serialConnectionService != null)
                 {
                     _serialConnectionService.PropertyChanged -= OnSerialConnectionServicePropertyChanged;
+                    if (_polarAlignmentDockVM != null)
+                    {
+                        _polarAlignmentDockVM.ManualStopRequested -= OnManualStopRequested;
+                    }
 
                     // Disconnect and dispose serial service
                     _serialConnectionService.Disconnect();

@@ -9,9 +9,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using MLAstro_Robotic_Polar_Alignment.Dockables;
+using MLAstroRPA.Dockables;
 
-namespace NINA.Plugins.PolarAlignment {
+namespace NINA.Plugins.MLAstroRPA {
 
     /// <summary>
     /// Options ResourceDictionary of the merged MLAstroRPA+TPPA options page. The code-behind

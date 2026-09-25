@@ -10,11 +10,11 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using MLAstro_Robotic_Polar_Alignment.Dockables;
-using MLAstro_Robotic_Polar_Alignment.Plugin;
-using MLAstro_Robotic_Polar_Alignment.Services;
+using MLAstroRPA.Dockables;
+using MLAstroRPA.Plugin;
+using MLAstroRPA.Services;
  
-namespace MLAstro_Robotic_Polar_Alignment.Plugin
+namespace MLAstroRPA.Plugin
 {
     /// <summary>
     /// Code-behind for the MLAstro Options fragment module (body DataTemplates of the CONTROL /
@@ -266,13 +266,18 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
         // (dùng lại OnSerialTerminalResizeThumbDragDelta: nó tìm RichTextBox trong cùng panel).
         private sealed class SystemLogBinding
         {
-            public System.Collections.ObjectModel.ObservableCollection<MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry> Source = null!;
+            public System.Collections.ObjectModel.ObservableCollection<MLAstroRPA.Dockables.SystemLogEntry> Source = null!;
             public System.Collections.Specialized.NotifyCollectionChangedEventHandler Handler = null!;
         }
 
         private void OnSystemLogLoaded(object sender, RoutedEventArgs e)
         {
-            if (sender is not RichTextBox richTextBox || richTextBox.DataContext is not MLAstroController controller)
+            if (sender is not RichTextBox richTextBox || richTextBox.Tag is SystemLogBinding)
+            {
+                return;
+            }
+
+            if (richTextBox.DataContext is not MLAstroController controller)
             {
                 return;
             }
@@ -302,7 +307,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
         /// để không làm mất vùng bôi chọn khi người dùng đang copy log.
         /// </summary>
         private static void SyncSystemLog(RichTextBox richTextBox,
-                                          System.Collections.ObjectModel.ObservableCollection<MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry> entries,
+                                          System.Collections.ObjectModel.ObservableCollection<MLAstroRPA.Dockables.SystemLogEntry> entries,
                                           System.Collections.Specialized.NotifyCollectionChangedEventArgs args)
         {
             if (richTextBox == null || entries == null)
@@ -315,7 +320,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
                 if (args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add
                     && args.NewItems != null && args.NewItems.Count == 1 && args.NewStartingIndex == 0)
                 {
-                    var paragraph = CreateSystemLogParagraph((MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry)args.NewItems[0]!, IsDarkBackground(richTextBox));
+                    var paragraph = CreateSystemLogParagraph((MLAstroRPA.Dockables.SystemLogEntry)args.NewItems[0]!, IsDarkBackground(richTextBox));
                     var first = richTextBox.Document.Blocks.FirstBlock;
                     if (first == null)
                     {
@@ -358,7 +363,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
         }
 
         private static void RebuildSystemLog(RichTextBox richTextBox,
-                                             System.Collections.Generic.IEnumerable<MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry> entries)
+                                             System.Collections.Generic.IEnumerable<MLAstroRPA.Dockables.SystemLogEntry> entries)
         {
             var document = new System.Windows.Documents.FlowDocument
             {
@@ -387,7 +392,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
         /// Web UI nhấn đúng cụm đó và nếu chuỗi chỉ có "Backlash applied" thì BỌC THÊM ngoặc,
         /// nên ở đây làm y hệt để nội dung hiển thị khớp web.
         /// </summary>
-        private static System.Windows.Documents.Paragraph CreateSystemLogParagraph(MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry entry, bool darkBackground)
+        private static System.Windows.Documents.Paragraph CreateSystemLogParagraph(MLAstroRPA.Dockables.SystemLogEntry entry, bool darkBackground)
         {
             var paragraph = new System.Windows.Documents.Paragraph
             {
@@ -395,8 +400,8 @@ namespace MLAstro_Robotic_Polar_Alignment.Plugin
                 Padding = new Thickness(0)
             };
 
-            var levelBrush = MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry.BrushForLevel(entry.Level, darkBackground);
-            var highlightBrush = MLAstro_Robotic_Polar_Alignment.Dockables.SystemLogEntry.HighlightBrush(darkBackground);
+            var levelBrush = MLAstroRPA.Dockables.SystemLogEntry.BrushForLevel(entry.Level, darkBackground);
+            var highlightBrush = MLAstroRPA.Dockables.SystemLogEntry.HighlightBrush(darkBackground);
             var text = entry.DisplayText ?? string.Empty;
 
             const string withParens = "(Backlash applied)";

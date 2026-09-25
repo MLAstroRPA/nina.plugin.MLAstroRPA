@@ -5,10 +5,10 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using MLAstro_Robotic_Polar_Alignment.Broker;
-using MLAstro_Robotic_Polar_Alignment.Dockables;
+using MLAstroRPA.Broker;
+using MLAstroRPA.Dockables;
 
-namespace MLAstro_Robotic_Polar_Alignment.Settings
+namespace MLAstroRPA.Settings
 {
     /// <summary>Kiểu kết nối tới MLAstroRPA.</summary>
     public enum MlastroTransportMode

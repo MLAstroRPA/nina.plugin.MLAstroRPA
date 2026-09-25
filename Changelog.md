@@ -9,6 +9,14 @@
 > hardware-control plugin. When redistributing, comply with MPL-2.0: retain the license and
 > notices and credit the original author.
 
+## 2.2.2.0 — 2026-09-25
+
+### Changed — plugin identity fully separated from MLAstroRPA+TPPA (own PluginId, MSI UpgradeCode, namespaces and resource keys) so both plugins can stay installed side by side
+### Changed — broker log shows direction (RPA → TPPA / TPPA → RPA) with a colour legend
+### Changed — English tooltips on the options page; overshoot values sit under their own direction and follow the master toggle
+### Fixed — polled telemetry no longer overwrites the azimuth/altitude inputs while editing
+### Fixed — commands dropped because the link is not connected are now logged
+
 ## 2.2.1.0 — 2026-09-20
 
 ### Fixed — AP/STA connection status indicators

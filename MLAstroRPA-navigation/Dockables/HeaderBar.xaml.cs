@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace MLAstro_Robotic_Polar_Alignment.Dockables
+namespace MLAstroRPA.Dockables
 {
     public partial class HeaderBar : UserControl
     {

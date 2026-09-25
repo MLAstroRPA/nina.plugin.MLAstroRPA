@@ -5,7 +5,7 @@ using Newtonsoft.Json.Linq;
 using NINA.Core.Model;
 using NINA.Plugin.Interfaces;
 
-namespace MLAstro_Robotic_Polar_Alignment.Broker
+namespace MLAstroRPA.Broker
 {
     /// <summary>
     /// Names and defaults of the external correction protocol, mirrored from the TPPA fork. The two
@@ -44,6 +44,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         public const string RequestMeasurement = "RequestMeasurement";
         public const string RequestCompletion = "RequestCompletion";
         public const string KeepAlive = "KeepAlive";
+        public const string PauseRequested = "PauseRequested";
         public const string SessionState = "SessionState";
         public const string StopRequested = "StopRequested";
         public const string Stopped = "Stopped";
@@ -74,6 +75,12 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         public const string VerifyOnly = "VerifyOnly";
         public const string CompletionRequested = "CompletionRequested";
         public const string NotAchieved = "NotAchieved";
+
+        /// <summary>Operator paused the run on the TPPA side: stop a move that is in progress.</summary>
+        public const string Paused = "Paused";
+
+        /// <summary>Operator resumed the run: moving and measuring may continue.</summary>
+        public const string Resumed = "Resumed";
     }
 
     /// <summary>Session states reported by TPPA through <c>SessionState</c>.</summary>
@@ -103,7 +110,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         public const string Fault = "fault";
     }
 
-    /// <summary>Azimuth correction direction as reported by TPPA (never re-derived locally).</summary>
+    /// <summary>Azimuth correction direction, derived from the sign of the measured azimuth error.</summary>
     public enum ExternalAzimuthDirection
     {
         None,
@@ -111,7 +118,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
         Right
     }
 
-    /// <summary>Altitude correction direction as reported by TPPA (never re-derived locally).</summary>
+    /// <summary>Altitude correction direction, derived from the sign of the measured altitude error and the hemisphere.</summary>
     public enum ExternalAltitudeDirection
     {
         None,
@@ -198,7 +205,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
 
         private static Guid ResolvePluginId()
         {
-            return Guid.TryParse(NINA.Plugins.PolarAlignment.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
+            return Guid.TryParse(NINA.Plugins.MLAstroRPA.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
         }
     }
 
@@ -225,7 +232,7 @@ namespace MLAstro_Robotic_Polar_Alignment.Broker
 
         private static Guid ResolvePluginId()
         {
-            return Guid.TryParse(NINA.Plugins.PolarAlignment.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
+            return Guid.TryParse(NINA.Plugins.MLAstroRPA.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
         }
     }
 }

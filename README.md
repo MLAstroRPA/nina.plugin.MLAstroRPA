@@ -27,7 +27,10 @@ The plugin options page is a single page with top-level tabs:
   (`1de8d7d3-f11e-494c-a371-95cb48dffa18`) and from the merged `MLAstroRPA+TPPA` plugin
   (`1352D162-2E66-4F80-A05B-854F021DB913`), so NINA treats them as separate plugins and they can
   all be installed side by side.
-- MLAstro-origin code keeps the `MLAstro_Robotic_Polar_Alignment.*` namespaces under `MLAstroRPA-navigation\`.
+- Code namespaces are `MLAstroRPA.*` (hardware control) and `NINA.Plugins.MLAstroRPA.*` (manifest/options),
+  and app-level resource keys carry the `MlaRpa` prefix: NINA merges every plugin `ResourceDictionary` into
+  `Application.Current.Resources`, so duplicate keys or type names would let the merged `MLAstroRPA+TPPA`
+  plugin override this plugin's templates.
 - There is exactly ONE `IPluginManifest` (`MLAstroPlugin`, root `MLAstroPlugin.cs`). The MLAstro
   options/state controller (`MLAstroRPA-navigation\Plugin\MLAstroController.cs`) is owned by it
   (`MLAstroPlugin.MLAstro`).
