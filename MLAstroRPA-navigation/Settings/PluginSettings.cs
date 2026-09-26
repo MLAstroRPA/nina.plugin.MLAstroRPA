@@ -95,6 +95,16 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
+        /// CONNECTION tab: when true the COM-port list is replaced by an "Auto scan COM port" Start button -
+        /// the plugin probes every COM port for the controller and connects to the port that answers.
+        /// </summary>
+        public bool AutoScanComPort
+        {
+            get => GetBool(nameof(AutoScanComPort), false);
+            set => SetBool(value);
+        }
+
+        /// <summary>
         /// Connection type to MLAstroRPA: Serial (COM port) or Wireless (WebSocket over mDNS/IP).
         /// Pick one of the two only - a single transport holds control at a time.
         /// </summary>

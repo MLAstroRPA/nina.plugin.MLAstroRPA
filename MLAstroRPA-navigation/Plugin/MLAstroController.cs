@@ -188,11 +188,111 @@ namespace MLAstroRPA.Plugin
             OnPropertyChanged(nameof(SerialConnectionStatus));
             OnPropertyChanged(nameof(SerialHandshakeStatus));
             OnPropertyChanged(nameof(SerialConnectButtonText));
+            OnPropertyChanged(nameof(AutoScanButtonText));
             OnPropertyChanged(nameof(IsExternalLocked));
             OnPropertyChanged(nameof(IsExternalUnlocked));
         }
 
         public string SerialConnectButtonText => IsSerialConnected ? "Disconnect" : "Connect";
+
+        // ===== Auto scan COM port (CONNECTION tab) =====
+
+        private string _autoScanStatus = string.Empty;
+
+        /// <summary>
+        /// "Auto scan COM port" toggle: ON replaces the COM-port list with the Start button (scan + connect),
+        /// OFF shows the manual COM-port dropdown again.
+        /// </summary>
+        public bool IsAutoScanComPort
+        {
+            get => Settings.AutoScanComPort;
+            set
+            {
+                if (Settings.AutoScanComPort == value)
+                {
+                    return;
+                }
+
+                Settings.AutoScanComPort = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsManualComPortVisible));
+            }
+        }
+
+        /// <summary>Shows the manual COM-port dropdown (auto scan OFF) instead of the Start button.</summary>
+        public bool IsManualComPortVisible => !IsAutoScanComPort;
+
+        /// <summary>Start (scan + connect) while disconnected, Disconnect while the session is up - the single button shown while auto scan is ON.</summary>
+        public string AutoScanButtonText => IsSerialConnected ? "Disconnect" : "Start";
+
+        /// <summary>Result of the last auto scan ("Scanning COM ports...", "Found on COM4", ...).</summary>
+        public string AutoScanStatus
+        {
+            get => _autoScanStatus;
+            private set
+            {
+                if (_autoScanStatus == value)
+                {
+                    return;
+                }
+
+                _autoScanStatus = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public ICommand StartAutoScanCommand { get; }
+
+        /// <summary>
+        /// Auto scan: probes every COM port for the controller (same handshake as TPPA), selects the port that
+        /// answered and connects to it. While connected the same button disconnects, so auto-scan mode needs no
+        /// separate Connect button.
+        /// </summary>
+        private async void StartAutoScan()
+        {
+            if (IsWirelessTransport)
+            {
+                return;
+            }
+
+            if (IsSerialConnected)
+            {
+                _serialConnectionService.Disconnect();
+                AutoScanStatus = string.Empty;
+                RaiseConnectionProperties();
+                return;
+            }
+
+            AutoScanStatus = "Scanning COM ports...";
+
+            string? foundPort;
+            try
+            {
+                foundPort = await Task.Run(() => _serialConnectionService.ScanForDeviceComPort());
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[MLAstro] Auto scan failed: {ex.Message}");
+                foundPort = null;
+            }
+
+            if (string.IsNullOrWhiteSpace(foundPort))
+            {
+                AutoScanStatus = "No MLAstro controller found on any COM port.";
+                Notification.ShowWarning("Auto scan: no MLAstro controller found on any COM port.");
+                return;
+            }
+
+            Settings.ComPort = foundPort;
+            RefreshComPorts();
+            AutoScanStatus = $"Found the controller on {foundPort}. Connecting...";
+
+            await _serialConnectionService.ConnectAsync(foundPort, SerialBaudRate);
+            AutoScanStatus = IsSerialConnected
+                ? $"Connected on {foundPort}."
+                : $"Device found on {foundPort}, but the connection failed.";
+            RaiseConnectionProperties();
+        }
 
         public bool IsHexDisplay
         {
@@ -792,6 +892,7 @@ namespace MLAstroRPA.Plugin
 
             RefreshComPortsCommand = new RelayCommand(RefreshComPorts);
             ToggleSerialConnectionCommand = new RelayCommand(ToggleSerialConnection);
+            StartAutoScanCommand = new RelayCommand(StartAutoScan);
             SendSerialCommand = new RelayCommand(SendSerial);
             ClearSerialTerminalCommand = new RelayCommand(ClearSerialTerminal);
             SaveAllSettingsCommand = new RelayCommand(SaveAllSettings);

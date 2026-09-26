@@ -37,8 +37,23 @@
                         </StackPanel>
 
                         <!-- ===== SERIAL SETTINGS (hidden completely when the Wireless connection is selected) ===== -->
-                        <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource MlaRpaBoolToVis}}">                        <WrapPanel Margin="0,0,0,10">
-                            <StackPanel Width="220" Margin="0,0,10,10">
+                        <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource MlaRpaBoolToVis}}">
+                        <!-- Auto scan COM port: ON -> probe every COM port for the controller and connect (Start button),
+                             OFF -> pick the port manually in the COM-port list. -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <CheckBox IsChecked="{Binding IsAutoScanComPort, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsExternalUnlocked}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0"
+                                      ToolTip="Probe every COM port for the MLAstro controller and connect to the port that answers." />
+                            <TextBlock Text="Auto scan COM port"
+                                       VerticalAlignment="Center"
+                                       FontSize="12" />
+                        </StackPanel>
+
+                        <WrapPanel Margin="0,0,0,10">
+                            <StackPanel Width="220" Margin="0,0,10,10"
+                                        Visibility="{Binding IsManualComPortVisible, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBlock Text="COM Port" Margin="0,0,0,5" />
                                 <ComboBox ItemsSource="{Binding AvailableComPortItems}"
                                           DisplayMemberPath="DisplayName"
@@ -46,11 +61,37 @@
                                           SelectedValue="{Binding Settings.ComPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           DropDownOpened="OnComPortDropDownOpened" />
                             </StackPanel>
+
+                            <StackPanel Width="220" Margin="0,0,10,10"
+                                        Visibility="{Binding IsAutoScanComPort, Converter={StaticResource MlaRpaBoolToVis}}">
+                                <TextBlock Text="Auto scan" Margin="0,0,0,5" />
+                                <Button Content="{Binding AutoScanButtonText}"
+                                        Width="110"
+                                        HorizontalAlignment="Left"
+                                        IsEnabled="{Binding IsExternalUnlocked}"
+                                        Command="{Binding StartAutoScanCommand}"
+                                        ToolTip="Scan every COM port for the controller and connect to the port that answers. While connected the button turns into Disconnect." />
+                                <TextBlock Text="{Binding AutoScanStatus}"
+                                           Foreground="Gray"
+                                           FontSize="11"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
                         </WrapPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <Button Content="{Binding SerialConnectButtonText}" Width="110" Margin="0,0,10,0" Command="{Binding ToggleSerialConnectionCommand}" />
-                            <Button Content="Reset ESP32" Width="110" Margin="0,0,10,0" Command="{Binding ResetEsp32Command}" />
+                            <!-- Hidden in auto-scan mode: the Start button connects and disconnects there. -->
+                            <Button Content="{Binding SerialConnectButtonText}"
+                                    Width="110"
+                                    Margin="0,0,10,0"
+                                    Command="{Binding ToggleSerialConnectionCommand}"
+                                    Visibility="{Binding IsManualComPortVisible, Converter={StaticResource MlaRpaBoolToVis}}" />
+                            <!-- Reset ESP32 only makes sense on a live session: shown once the connection is up. -->
+                            <Button Content="Reset ESP32"
+                                    Width="110"
+                                    Margin="0,0,10,0"
+                                    Command="{Binding ResetEsp32Command}"
+                                    Visibility="{Binding IsSerialConnected, Converter={StaticResource MlaRpaBoolToVis}}" />
                             <TextBlock Text="{Binding AutoReconnectStatus}"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
@@ -139,10 +180,12 @@
                                         Width="110"
                                         Margin="0,0,10,0"
                                         Command="{Binding ToggleSerialConnectionCommand}" />
+                                <!-- Reset ESP32 only makes sense on a live session: shown once the connection is up. -->
                                 <Button Content="Reset ESP32"
                                         Width="110"
                                         Margin="0,0,10,0"
-                                        Command="{Binding ResetEsp32Command}" />
+                                        Command="{Binding ResetEsp32Command}"
+                                        Visibility="{Binding IsSerialConnected, Converter={StaticResource MlaRpaBoolToVis}}" />
                                 <TextBlock Text="{Binding AutoReconnectStatus}"
                                            VerticalAlignment="Center"
                                            FontWeight="SemiBold"

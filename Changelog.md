@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 3.1.0.0 — 2026-09-27
+
+### Added — CONNECTION tab: "Auto scan COM port" toggle - with it enabled the COM-port list is replaced by a Start button that probes every COM port for the controller (same `[MLAstroRPA-TC]` handshake as TPPA), selects the port that answered and connects to it (the button turns into Disconnect once the session is up); the Reset ESP32 button is shown only while connected
+
 ## 3.0.0.0 — 2026-09-26
 
 ### Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel

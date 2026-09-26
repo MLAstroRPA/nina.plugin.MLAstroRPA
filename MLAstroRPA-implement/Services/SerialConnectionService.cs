@@ -28,6 +28,11 @@ namespace MLAstroRPA.Services
         private const string InitialHandshakeCommand = "[MLAstroRPA-TC]\n";
         private const string ConnectionCheckCommand = "?\n";
         private const int PortOpenTimeoutMilliseconds = 3000;
+
+        // COM auto-scan (CONNECTION tab "Auto scan COM port"): per-port probe timeouts. Kept short so
+        // probing a long COM list stays fast.
+        private const int ScanReadTimeoutMilliseconds = 400;
+        private const int ScanWriteTimeoutMilliseconds = 300;
         private const int ConnectionCheckFailThreshold = 3;
         public const int HandshakeTimeoutMinMilliseconds = 100;
         public const int HandshakeTimeoutMaxMilliseconds = 5000;
@@ -639,6 +644,70 @@ namespace MLAstroRPA.Services
             AvailableComPortInfos = portNames
                 .Select(p => new ComPortInfo(p, friendlyNames.TryGetValue(p, out var fn) ? fn : null))
                 .ToArray();
+        }
+
+        /// <summary>
+        /// Probes every enumerated COM port with the handshake (<c>[MLAstroRPA-TC]</c> -&gt; <c>ok,...</c>) and returns
+        /// the first port that answers, or <c>null</c> when no MLAstro controller is attached. Every port is opened,
+        /// probed and closed again WITHOUT keeping a handle, so auto-scan never blocks the real session that
+        /// <see cref="ConnectAsync"/> opens afterwards.
+        /// </summary>
+        public string? ScanForDeviceComPort()
+        {
+            if (IsConnected)
+            {
+                // A session already owns a port - never probe a port that may be in use.
+                return ConfiguredComPort;
+            }
+
+            foreach (var portName in SerialPort.GetPortNames()
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                SerialPort? probe = null;
+                try
+                {
+                    probe = new SerialPort(portName, ConfiguredBaudRate, Parity.None, 8, StopBits.One)
+                    {
+                        NewLine = "\n",
+                        ReadTimeout = ScanReadTimeoutMilliseconds,
+                        WriteTimeout = ScanWriteTimeoutMilliseconds
+                    };
+                    probe.Open();
+                    probe.DiscardInBuffer();
+                    probe.Write(InitialHandshakeCommand);
+                    var ack = probe.ReadLine()?.Trim();
+                    if (string.Equals(ack?.Split(',')[0], "ok", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Logger.Info($"[MLAstro] Auto scan found the controller on {portName}");
+                        return portName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Busy port / another device / no answer -> keep scanning the remaining ports.
+                    Logger.Info($"[MLAstro] Auto scan skipped {portName}: {ex.Message}");
+                }
+                finally
+                {
+                    try
+                    {
+                        if (probe?.IsOpen == true)
+                        {
+                            probe.Close();
+                        }
+                    }
+                    catch
+                    {
+                        // Closing a port that already dropped off the bus throws - nothing to do here.
+                    }
+
+                    probe?.Dispose();
+                }
+            }
+
+            Logger.Warning("[MLAstro] Auto scan did not find the controller on any COM port");
+            return null;
         }
 
         /// <summary>
