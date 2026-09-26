@@ -26,3 +26,6 @@ Installer/MSI/bin/
 Installer/MSI/obj/  
 Installer/MSI/Plugin/
 Installer/MSI/Output/
+
+# Release notes are per-release artifacts (published on the GitHub release), not tracked
+Installer/MSI/ReleaseNotes/
