@@ -1,4 +1,4 @@
-# MLAstroRPA+TPPA - MSI Build Script
+# MLAstroRPA - MSI Build Script
 # Creates the MSI installer (single merged plugin) using WiX Toolset v6
 
 param(
@@ -134,7 +134,7 @@ function Select-ReleaseNotesFile {
 }
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "MLAstroRPA+TPPA Plugin - MSI Builder" -ForegroundColor Cyan
+Write-Host "MLAstroRPA Plugin - MSI Builder" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -276,7 +276,7 @@ if (-not $ReleaseOnly) {
 
     # ========== BUILD MSI ==========
     # Building the wixproj builds the referenced plugin (Release) which stages its DLL into
-    # Installer\MSI\Plugin\MLAstroRPA_TPPA (RefreshInstallerPluginDll target), then compiles
+    # Installer\MSI\Plugin\MLAstroRPA (RefreshInstallerPluginDll target), then compiles
     # Package.wxs which harvests that staged DLL.
     Write-Host ""
     Write-Host "Building MSI package..." -ForegroundColor Yellow
@@ -323,7 +323,7 @@ if (-not $ReleaseOnly) {
 # ========== GITHUB RELEASE (optional, enabled with -CreateRelease) ==========
 # Creates a new GitHub release v<version> on the repo and uploads:
 #   - the MSI
-#   - the staged plugin DLL (Installer\MSI\Plugin\MLAstroRPA_TPPA)
+#   - the staged plugin DLL (Installer\MSI\Plugin\MLAstroRPA)
 if ($CreateRelease) {
     Write-Host ""
     Write-Host "============================================" -ForegroundColor Magenta
@@ -380,7 +380,7 @@ if ($CreateRelease) {
     # ---------- RELEASE NOTES: chon file mo ta ----------
     # Chay tay (khong -NotesFile, khong -Yes): hien menu cho chon 1 file trong Installer\MSI\ReleaseNotes\.
     # File khop "v<version>.md" duoc highlight san. ESC = dung notes mac dinh ngan gon.
-    $notes = "Release v$Version`n`nView README.md to know how to install.`n`n`"NINA.Plugins.MLAstroRPA_TPPA.dll`" is the merged MLAstroRPA+TPPA plugin (MLAstro hardware control + Three Point Polar Alignment)."
+    $notes = "Release v$Version`n`nView README.md to know how to install.`n`n`"NINA.Plugins.MLAstroRPA.dll`" is the MLAstroRPA plugin (hardware control for the MLAstro Robotic Polar Alignment controller)."
     $useNotesFile = $false
     $releaseNotesDir = Join-Path $MSIProjectDir "ReleaseNotes"
 
@@ -430,11 +430,17 @@ if ($CreateRelease) {
     $pluginDir = Join-Path $MSIProjectDir "Plugin"
     $assets = New-Object System.Collections.Generic.List[string]
     $assets.Add($msiDest)
-    $candidate = Join-Path $pluginDir "MLAstroRPA_TPPA\NINA.Plugins.MLAstroRPA_TPPA.dll"
+    $candidate = Join-Path $pluginDir "MLAstroRPA\NINA.Plugins.MLAstroRPA.dll"
     if (Test-Path $candidate) {
         $assets.Add($candidate)
     } else {
         Write-Host "WARNING: Asset not found, skipping: $candidate" -ForegroundColor Yellow
+    }
+    $tppaCandidate = Join-Path $pluginDir "Three Point Polar Alignment\NINA.Plugins.PolarAlignment.dll"
+    if (Test-Path $tppaCandidate) {
+        $assets.Add($tppaCandidate)
+    } else {
+        Write-Host "WARNING: Asset not found, skipping: $tppaCandidate" -ForegroundColor Yellow
     }
 
     Write-Host ""

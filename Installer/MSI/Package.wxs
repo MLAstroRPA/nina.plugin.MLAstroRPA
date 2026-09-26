@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-  MLAstroRPA+TPPA - N.I.N.A Plugin (merged single plugin)
+  MLAstroRPA - N.I.N.A Plugin installer
+  Installs TWO plugins side by side: MLAstroRPA + Three Point Polar Alignment
   WiX v6 Installer Package
 -->
 
@@ -11,10 +12,11 @@
 
   <!-- Define variables -->
   <?define ProductName = "MLAstroRPA" ?>
-  <?define ProductVersion = "2.2.1.0" ?>
+  <?define ProductVersion = "3.0.0.0" ?>
   <?define Manufacturer = "MLAstro" ?>
   <?define UpgradeCode = "F1B678EE-AA5A-4A34-B7CE-2625CAD7934C" ?>
   <?define PluginFolderName = "MLAstroRPA" ?>
+  <?define TPPAPluginFolderName = "Three Point Polar Alignment" ?>
   <?define NINAVersion = "3.0.0" ?>
 
   <!-- Package definition -->
@@ -83,12 +85,14 @@
     <Property Id="WixShellExecTarget" Value="https://nighttime-imaging.eu/download/" />
     <CustomAction Id="LaunchNinaDownload" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" Return="ignore" />
 
-    <!-- Single feature - the merged plugin (installed by default) -->
+    <!-- Single feature - BOTH plugins are always installed together (no feature-selection page) -->
     <Feature Id="MainPluginFeature" Title="$(var.ProductName)"
-             Description="MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware: CONTROL / CONNECTION / CONFIGURATION options tabs and the MLAstro docking panel."
+             Description="Two N.I.N.A. plugins: MLAstroRPA (hardware control for the MLAstro Robotic Polar Alignment controller) and Three Point Polar Alignment (the TPPA wizard that drives the correction over the message broker)."
              Level="1">
       <ComponentGroupRef Id="PluginFiles" />
       <ComponentRef Id="CreatePluginFolder" />
+      <ComponentGroupRef Id="TPPAFiles" />
+      <ComponentRef Id="CreateTPPAFolder" />
     </Feature>
 
     <!-- WixUI_Minimal: standard Welcome/License/Verify/Progress/Exit flow.
@@ -98,13 +102,13 @@
 
     <!-- Custom completion message -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT"
-              Value="Installation complete!&#13;&#10;&#13;&#10;Start N.I.N.A. to use the MLAstroRPA+TPPA plugin.&#13;&#10;The control panel will appear in the 'Docking' menu." />
+              Value="Installation complete!&#13;&#10;&#13;&#10;Start N.I.N.A. to use the MLAstroRPA and Three Point Polar Alignment plugins.&#13;&#10;The MLAstro panel will appear in the 'Docking' menu, Three Point Polar Alignment in 'Imaging'." />
 
     <!-- Custom dialog shown when N.I.N.A. is not installed - has a Download button that opens the N.I.N.A. page -->
     <UI Id="NinaCheckUI">
       <Dialog Id="NinaMissingDlg" Width="370" Height="200" Title="N.I.N.A. not found">
         <Control Id="Title" Type="Text" X="15" Y="15" Width="340" Height="20" TabSkip="yes" Text="{\WixUI_Font_Title}N.I.N.A. is required" />
-        <Control Id="Description" Type="Text" X="15" Y="45" Width="340" Height="60" TabSkip="yes" Text="MLAstroRPA+TPPA requires N.I.N.A. version 3.0 or later.&#10;&#10;Click the button below to open the N.I.N.A. download page, then run this installer again." />
+        <Control Id="Description" Type="Text" X="15" Y="45" Width="340" Height="60" TabSkip="yes" Text="These plugins require N.I.N.A. version 3.0 or later.&#10;&#10;Click the button below to open the N.I.N.A. download page, then run this installer again." />
         <Control Id="DownloadButton" Type="PushButton" X="15" Y="115" Width="180" Height="22" Text="Download N.I.N.A.">
           <Publish Event="DoAction" Value="LaunchNinaDownload" Condition="1" />
         </Control>
@@ -127,13 +131,14 @@
 
   </Package>
 
-  <!-- Directory structure: LocalAppData\NINA\Plugins\3.0.0\MLAstroRPA (PluginFolderName) -->
+  <!-- Directory structure: LocalAppData\NINA\Plugins\3.0.0\<plugin folder> for both plugins -->
   <Fragment>
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="NINADir" Name="NINA">
         <Directory Id="PluginsDir" Name="Plugins">
           <Directory Id="INSTALLDIR" Name="$(var.NINAVersion)">
             <Directory Id="INSTALLFOLDER" Name="$(var.PluginFolderName)" />
+            <Directory Id="TPPAINSTALLFOLDER" Name="$(var.TPPAPluginFolderName)" />
           </Directory>
         </Directory>
       </Directory>
@@ -168,6 +173,39 @@
               Source="Plugin\MLAstroRPA\NINA.Plugins.MLAstroRPA.dll" />
         <RegistryValue Root="HKCU" Key="Software\MLAstro\MLAstroRPA"
                        Name="MainDLL" Type="string" Value="[INSTALLFOLDER]NINA.Plugins.MLAstroRPA.dll"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Component to create and remove the Three Point Polar Alignment plugin folder -->
+  <Fragment>
+    <Component Id="CreateTPPAFolder" Directory="TPPAINSTALLFOLDER" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
+      <CreateFolder />
+      <RemoveFolder Id="RemoveTPPAFolder" Directory="TPPAINSTALLFOLDER" On="uninstall" />
+      <RemoveFolder Id="RemoveTPPAVersionDir" Directory="INSTALLDIR" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\MLAstro\ThreePointPolarAlignment"
+                     Name="Installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\MLAstro\ThreePointPolarAlignment"
+                     Name="InstallPath"
+                     Type="string"
+                     Value="[TPPAINSTALLFOLDER]" />
+    </Component>
+  </Fragment>
+
+  <!-- Three Point Polar Alignment plugin file component group -->
+  <Fragment>
+    <ComponentGroup Id="TPPAFiles" Directory="TPPAINSTALLFOLDER">
+      <Component Id="TPPAPluginDLL" Guid="C3D4E5F6-A7B8-9012-CDEF-345678901234">
+        <File Id="TPPADLL"
+              Source="Plugin\Three Point Polar Alignment\NINA.Plugins.PolarAlignment.dll" />
+        <RegistryValue Root="HKCU" Key="Software\MLAstro\ThreePointPolarAlignment"
+                       Name="MainDLL" Type="string" Value="[TPPAINSTALLFOLDER]NINA.Plugins.PolarAlignment.dll"
                        KeyPath="yes" />
       </Component>
     </ComponentGroup>
