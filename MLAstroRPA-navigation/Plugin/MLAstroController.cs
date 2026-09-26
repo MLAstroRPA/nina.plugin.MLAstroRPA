@@ -27,11 +27,11 @@ namespace MLAstroRPA.Plugin
     /// </summary>
     public class MLAstroController : INotifyPropertyChanged, IDisposable
     {
-        // Firmware MLAstroRPA chạy cố định 115200 8N1 - không cho người dùng chọn baudrate nữa.
+        // The MLAstroRPA firmware runs at a fixed 115200 8N1 - the baud rate is no longer user selectable.
         private const int SerialBaudRate = 115200;
-        // Wireless (WebSocket): AutoReconnect (sau Reset ESP32 / SAVE ALL) chỉ thử lại trong 1 khoảng
-        // CÓ HẠN này rồi báo lỗi - đủ cho firmware reboot + vào WiFi, nhưng địa chỉ sai thì không
-        // retry vô hạn. (Lần kết nối do người dùng bấm Connect đã tự giới hạn 5 s trong ConnectAsync.)
+        // Wireless (WebSocket): AutoReconnect (after an ESP32 reset / SAVE ALL) retries only for a
+        // LIMITED window and then reports an error - enough for a firmware reboot and a WiFi join, but a wrong
+        // address is not retried forever. (A user Connect press already limits itself to 5 s in ConnectAsync.)
         private const int WirelessReconnectWindowSeconds = 30;
 
         private readonly SerialConnectionService _serialConnectionService;
@@ -52,8 +52,8 @@ namespace MLAstroRPA.Plugin
         private bool _apPasswordEdited;
         private bool _staPasswordEdited;
 
-        // Transport WIRELESS (WebSocket) - tạo cùng lúc với controller, dùng chung singleton
-        // MlastroWebSocketService.Instance cho cả UI và driver TPPA (firmware chỉ cho 1 PC WS).
+        // WIRELESS transport (WebSocket) - created with the controller, sharing the singleton
+        // MlastroWebSocketService.Instance for both the UI and the TPPA driver (the firmware allows one WS client).
         private readonly MlastroWebSocketService _webSocketService;
 
         public PluginSettings Settings { get; }
@@ -104,24 +104,24 @@ namespace MLAstroRPA.Plugin
 
         public bool IsSerialConnected => _serialConnectionService.IsConnected || _webSocketService.IsConnected;
 
-        /// <summary>TPPA đang giữ quyền điều khiển -> khoá tab HARDWARE SETTING.</summary>
+        /// <summary>TPPA holds control -> the HARDWARE SETTING tab is locked.</summary>
         public bool IsExternalLocked => _serialConnectionService.IsExternalControlActive
                                         || (_webSocketService.IsConnected && _webSocketService.IsExternalControlActive);
 
         public bool IsExternalUnlocked => !IsExternalLocked;
 
-        // ===== Chọn kiểu kết nối: Serial / Wireless =====
+        // ===== Connection type: Serial / Wireless =====
         public bool IsWirelessTransport => Settings.TransportMode == MlastroTransportMode.Wireless;
 
         public bool IsSerialTransport => !IsWirelessTransport;
 
-        /// <summary>Hiện khối cài đặt Serial (COM port, data bits...) chỉ khi chọn Serial connection.</summary>
+        /// <summary>Shows the Serial settings block (COM port, data bits...) only for the Serial connection.</summary>
         public bool IsSerialSettingsVisible => IsSerialTransport;
 
-        /// <summary>Hiện bảng Wireless (Địa chỉ / Kết nối / System log) chỉ khi chọn Wireless connection.</summary>
+        /// <summary>Shows the Wireless panel (address / connect / system log) only for the Wireless connection.</summary>
         public bool IsWirelessSettingsVisible => IsWirelessTransport;
 
-        /// <summary>0 = Serial connection, 1 = Wireless connection (binding cho ComboBox ở tab CONNECTION).</summary>
+        /// <summary>0 = Serial connection, 1 = Wireless connection (bound to the CONNECTION tab ComboBox).</summary>
         public int TransportModeIndex
         {
             get => IsWirelessTransport ? 1 : 0;
@@ -133,7 +133,7 @@ namespace MLAstroRPA.Plugin
                     return;
                 }
 
-                // Đổi transport khi đang kết nối → ngắt transport cũ trước (mỗi lúc chỉ 1 transport giữ quyền).
+                // Switching transport while connected -> drop the old one first (a single transport holds control).
                 if (_serialConnectionService.IsConnected)
                 {
                     _serialConnectionService.Disconnect();
@@ -159,8 +159,8 @@ namespace MLAstroRPA.Plugin
         }
 
         /// <summary>
-        /// Làm mới binding transport trên UI thread: Connection type có thể bị TPPA đổi từ luồng nền
-        /// (Connect chạy trong Task.Run) khi đường Wireless thất bại và phải fallback sang Serial.
+        /// Refreshes the transport binding on the UI thread: TPPA can change the connection type from a background
+        /// thread (Connect runs in Task.Run) when the Wireless path fails and it has to fall back to Serial.
         /// </summary>
         private void RaiseTransportPropertiesOnUiThread()
         {
@@ -210,8 +210,8 @@ namespace MLAstroRPA.Plugin
         public ObservableCollection<SerialTerminalEntry> SerialTerminalEntries => _serialConnectionService.TerminalEntries;
 
         /// <summary>
-        /// System log kiểu Web UI (dùng ở chế độ Wireless): [thời gian] + nội dung, tô màu theo mức độ,
-        /// dòng mới nhất lên trên, tối đa 50 dòng, KHÔNG có frame TX/RX thô.
+        /// System log in the Web UI style (used in Wireless mode): [time] + content, coloured by level,
+        /// newest line on top, 50 lines at most, and NO raw TX/RX frames.
         /// </summary>
         public ObservableCollection<SystemLogEntry> SystemLog => _webSocketService.SystemLog;
 
@@ -1144,8 +1144,8 @@ namespace MLAstroRPA.Plugin
                 }
                 else
                 {
-                    // Báo RÕ khi kết nối không dây thất bại (mDNS không resolve / sai địa chỉ) thay vì
-                    // im lặng để người dùng tưởng đã kết nối được.
+                    // Reports a wireless failure CLEARLY (mDNS does not resolve / wrong address) instead of
+                    // staying silent and leaving the user thinking the connection worked.
                     if (!await _webSocketService.ConnectAsync())
                     {
                         var wirelessReason = _webSocketService.ConnectionStatus;
@@ -1216,7 +1216,7 @@ namespace MLAstroRPA.Plugin
             _serialConnectionService.ClearTerminal();
         }
 
-        /// <summary>Xuất System log ra file CSV (giống nút Export CSV của Web UI).</summary>
+        /// <summary>Exports the system log to a CSV file (like the Web UI Export CSV button).</summary>
         private void ExportSystemLog()
         {
             try
@@ -1242,7 +1242,7 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        /// <summary>Gửi ReER:1 (resetError) — dùng chung facade nên chạy được cả Serial lẫn Wireless.</summary>
+        /// <summary>Sends ReER:1 (resetError) - it goes through the shared facade, so it works over Serial and Wireless.</summary>
         private void ResetError()
         {
             if (!IsSerialConnected)
@@ -1265,9 +1265,9 @@ namespace MLAstroRPA.Plugin
                     return;
                 }
 
-                // PHẢI ngắt phiên hiện tại trước khi kết nối lại: `ConnectAsync()` bỏ qua ngay khi
-                // `IsConnected == true`, nên nếu không Disconnect thì bước "reconnect" không làm gì cả
-                // (UI vẫn báo Connected trong khi socket đã chết theo device đang reboot).
+                // The current session MUST be dropped before reconnecting: `ConnectAsync()` returns at once when
+                // `IsConnected == true`, so without a Disconnect the "reconnect" step does nothing
+                // (the UI still says Connected while the socket died with the rebooting device).
                 _webSocketService.Disconnect();
                 await AutoReconnectAsync(3);
                 return;
@@ -1288,18 +1288,18 @@ namespace MLAstroRPA.Plugin
                 return;
             }
 
-            // ---- WIRELESS: lưu cấu hình qua WebSocket API (saveConfig + reboot) ----
-            // Cùng một dòng lệnh text như đường Serial: translator dịch sang saveConfig
-            // (limits/motor/backlash + wifi_ap/wifi) rồi gửi reboot. Password của AP/STA trước đây
-            // bị bỏ lại phía Serial nên đổi password bằng Wireless không có tác dụng.
+            // ---- WIRELESS: save the configuration through the WebSocket API (saveConfig + reboot) ----
+            // The same text command as the Serial path: the translator turns it into saveConfig
+            // (limits/motor/backlash + wifi_ap/wifi) and then sends reboot. The AP/STA password used to be
+            // left to the Serial path, so changing the password over Wireless had no effect.
             if (IsWirelessTransport)
             {
                 try
                 {
                     var wirelessConfig = _serialConnectionService.BuildConfigurationCommand(Settings);
-                    // CHỈ gửi password khi có giá trị: binding WPF (UpdateSourceTrigger=PropertyChanged)
-                    // có thể ghi giá trị trung gian rỗng trong lúc người dùng đang gõ lại, và gửi
-                    // "STAp:"/"APpa:" rỗng sẽ XOÁ mật khẩu trên thiết bị (→ STA fail reason 15).
+                    // Send a password ONLY when it has a value: the WPF binding (UpdateSourceTrigger=PropertyChanged)
+                    // can push an empty intermediate value while the user retypes it, and sending an empty
+                    // "STAp:"/"APpa:" WIPES the password on the device (-> STA fail reason 15).
                     if (_apPasswordEdited && !string.IsNullOrEmpty(Settings.ApPass))
                     {
                         wirelessConfig = $"APpa:{Settings.ApPass}," + wirelessConfig;
@@ -1329,8 +1329,8 @@ namespace MLAstroRPA.Plugin
 
             try
             {
-                // Không gửi giá trị rỗng (xem ghi chú ở nhánh wireless): giá trị rỗng sẽ xoá mật khẩu
-                // đang lưu trên thiết bị, khiến STA không kết nối được nữa (reason 15).
+                // Do not send an empty value (see the note in the wireless branch): an empty value wipes the password
+                // stored on the device and STA can no longer connect (reason 15).
                 if (_apPasswordEdited && !string.IsNullOrEmpty(Settings.ApPass) &&
                     !await _serialConnectionService.SendCommandAndAwaitOkAsync($"APpa:{Settings.ApPass}\n"))
                 {
@@ -1350,8 +1350,8 @@ namespace MLAstroRPA.Plugin
                 // Password updates are sent separately above; send the remaining configuration last.
                 var configCommand = _serialConnectionService.BuildConfigurationCommand(Settings);
 
-                // Chuẩn bị chờ marker TRƯỚC khi gửi: firmware in "All Setting Saved" ngay sau khi ghi
-                // FRAM xong, nếu arm sau khi gửi thì có thể lỡ marker.
+                // Arm the marker wait BEFORE sending: the firmware prints "All Setting Saved" right after the
+                // FRAM write, so arming after sending can miss the marker.
                 _serialConnectionService.ArmAllSettingsSavedWaiter();
 
                 // Send to device
@@ -1362,7 +1362,7 @@ namespace MLAstroRPA.Plugin
                     return;
                 }
 
-                // CHỈ coi là lưu thành công khi nhận được marker "All Setting Saved" từ thiết bị.
+                // Saving counts as successful ONLY when the "All Setting Saved" marker arrives from the device.
                 var saved = await _serialConnectionService.WaitForAllSettingsSavedAsync(6000);
                 if (!saved)
                 {
@@ -1372,7 +1372,7 @@ namespace MLAstroRPA.Plugin
 
                 Logger.Info("[MLAstro] FRAM save confirmed ('All Setting Saved'). Resetting ESP32 via DTR/RTS...");
 
-                // Firmware KHÔNG tự reboot (xem Serial-protocol.md) — PC phải reset ESP qua EN pin.
+                // The firmware does NOT reboot by itself (see Serial-protocol.md) - the PC has to reset the ESP over the EN pin.
                 _serialConnectionService.ResetEsp32();
 
                 // Disconnect
@@ -1437,7 +1437,7 @@ namespace MLAstroRPA.Plugin
         {
             try
             {
-                // ---- WIRELESS: không có COM port để liệt kê lại, chỉ kết nối lại WebSocket ----
+                // ---- WIRELESS: there is no COM port to rescan, only the WebSocket to reconnect ----
                 if (IsWirelessTransport)
                 {
                     for (int i = countdownSeconds; i > 0; i--)
@@ -1446,7 +1446,7 @@ namespace MLAstroRPA.Plugin
                         await System.Threading.Tasks.Task.Delay(1000);
                     }
 
-                    // Chỉ thử lại trong WirelessReconnectWindowSeconds (30 s, đủ cho device reboot) rồi báo lỗi.
+                    // Retries only within WirelessReconnectWindowSeconds (30 s, enough for a device reboot) and then reports an error.
                     var wirelessDeadline = DateTime.UtcNow.AddSeconds(WirelessReconnectWindowSeconds);
 
                     for (int attempt = 0; ; attempt++)
@@ -1461,7 +1461,7 @@ namespace MLAstroRPA.Plugin
                             return;
                         }
 
-                        // Hết thời gian thử lại (30 s, đủ cho reboot) → báo lỗi kèm lý do, KHÔNG thử vô hạn.
+                        // Retry window over (30 s, enough for a reboot) -> report the error with its reason, no endless retries.
                         if (DateTime.UtcNow >= wirelessDeadline)
                         {
                             break;
@@ -1598,7 +1598,7 @@ namespace MLAstroRPA.Plugin
                 && !_hasUserSettingsEdits
                 && e.PropertyName != nameof(PluginSettings.HandshakeTimeoutMilliseconds)
                 && e.PropertyName != nameof(PluginSettings.PollingIntervalMilliseconds)
-                && e.PropertyName != nameof(PluginSettings.ComPort)) // ComPort đổi do mở kết nối (không phải user sửa config)
+                && e.PropertyName != nameof(PluginSettings.ComPort)) // ComPort changes when a connection opens (not a user edit)
             {
                 _hasUserSettingsEdits = true;
                 _serialConnectionService.SuspendSettingsSync = true;
@@ -1607,9 +1607,9 @@ namespace MLAstroRPA.Plugin
 
             if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(PluginSettings.TransportMode))
             {
-                // TPPA có thể TỰ chuyển Connection type về Serial khi đường Wireless thất bại → UI
-                // (ComboBox + khối cài đặt Serial/Wireless) phải đổi theo, kể cả khi sự kiện đến từ
-                // luồng nền (Connect của TPPA chạy trong Task.Run).
+                // TPPA can switch the connection type back to Serial by itself when the Wireless path fails -> the UI
+                // (ComboBox + Serial/Wireless settings blocks) has to follow, even when the event comes from a
+                // background thread (the TPPA Connect runs in Task.Run).
                 RaiseTransportPropertiesOnUiThread();
             }
 

@@ -104,7 +104,7 @@
                                FontSize="11" 
                                Foreground="#BDC3C7"
                                Margin="0,2,0,0"/>
-                    <!-- Firmware version: chỉ hiện khi đã kết nối + handshake OK (chưa kết nối thì ẩn) -->
+                    <!-- Firmware version: only when connected + handshake OK (hidden while not connected) -->
                     <TextBlock Text="{Binding FirmwareVersion, StringFormat=Firmware {0}}" 
                                FontSize="11" 
                                Foreground="#BDC3C7"
@@ -125,11 +125,11 @@
                                Foreground="{Binding StatusForeground}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
-                <!-- Trạng thái AP của thiết bị — CHỈ hiện khi đã kết nối + handshake OK:
-                     · "AP: 🟢 <IP>" = CHÍNH PC đang đi qua hotspot của ESP32 (firmware báo link=AP)
-                     · "AP: 🛜 <IP>" = AP đã lên nhưng PC đi đường khác (STA / cáp USB)
-                     · "AP: ❌"      = AP không lên / không có IP
-                     ToolTip = trạng thái link tới thiết bị (cổng COM / kết nối wireless). -->
+                <!-- AP state of the device - shown ONLY when connected + handshake OK:
+                     - "AP: <green dot> <IP>" = THIS PC runs through the ESP32 hotspot (the firmware reports link=AP)
+                     - "AP: <wireless mark> <IP>" = the AP is up but the PC goes another way (STA / USB cable)
+                     - "AP: <cross>" = the AP did not come up / has no IP
+                     ToolTip = the link state to the device (COM port / wireless connection). -->
                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0"
                             ToolTip="{Binding ConnectionStatusText}"
                             Visibility="{Binding ControlsVisibility}">
@@ -138,9 +138,9 @@
                                Foreground="#BDC3C7"
                                Margin="0,0,5,0"
                                VerticalAlignment="Center"/>
-                    <!-- Icon AP (emoji màu, tự có màu sẵn): 🟢 CHÍNH PC đi qua hotspot · 🛜 AP đã lên
-                         nhưng PC đi đường khác · ❌ AP lỗi. Foreground={ApIconBrush} chỉ có tác dụng
-                         nếu sau này đổi sang glyph đơn sắc. -->
+                    <!-- AP icon (coloured emoji, it carries its own colour): green dot = THIS PC goes through the hotspot
+                         - the AP is up but the PC goes another way - cross = AP error. Foreground={ApIconBrush} only matters
+                         if the glyph is ever changed to a monochrome one. -->
                     <TextBlock Text="{Binding ApIconGlyph}"
                                FontSize="12" 
                                Foreground="{Binding ApIconBrush}"
@@ -152,19 +152,19 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- STA: <icon> IP — icon vẽ bằng FONT ĐƠN SẮC (Segoe UI Symbol) nên tô MÀU được:
-                     glyph = chất lượng đường STA (📶 có internet · 📶❗ có router, không internet ·
-                     ❌ chưa vào router); màu = trạng thái CLIENT — xanh lục khi CHÍNH PC (NINA) đi
-                     qua đường STA, xanh lam khi PC đi đường khác (cáp USB / hotspot AP).
-                     Chỉ hiện khi đã kết nối + handshake OK (cùng điều kiện với dòng AP). -->
+                <!-- STA: <icon> IP - the icon uses a MONOCHROME FONT (Segoe UI Symbol), so it can be COLOURED:
+                     glyph = STA link quality (full bars = internet - bars with a bang = router but no internet -
+                     cross = not joined to the router); colour = CLIENT state - green when THIS PC (NINA) goes
+                     through STA, blue when the PC goes another way (USB cable / AP hotspot).
+                     Shown only when connected + handshake OK (same condition as the AP line). -->
                 <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
                             Visibility="{Binding ControlsVisibility}">
                     <TextBlock Text="STA:"
                                Foreground="#BDC3C7"
                                Margin="0,0,5,0"
                                VerticalAlignment="Center"/>
-                    <!-- Icon đường STA: glyph theo chất lượng sóng, màu theo trạng thái client.
-                         FontFamily đơn sắc bắt buộc — emoji màu sẽ bỏ qua Foreground. -->
+                    <!-- STA icon: glyph by signal quality, colour by client state.
+                         A monochrome FontFamily is required - coloured emoji ignores Foreground. -->
                     <TextBlock Text="{Binding StaIconText}"
                                FontFamily="Segoe UI Symbol"
                                FontSize="12" 

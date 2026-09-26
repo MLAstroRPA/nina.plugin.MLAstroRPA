@@ -40,8 +40,8 @@ namespace MLAstroRPA.Services
         // Static flag to pause query on ALL instances
         private static bool _pauseQueryGlobal;
 
-        /// <summary>Xảy ra khi <see cref="PauseQueryGlobal"/> đổi (auto khi TPPA mượn/trả cổng, hoặc gạt tay)
-        /// để UI checkbox "Pause polling '?'" luôn phản ánh đúng trạng thái thật.</summary>
+        /// <summary>Raised when <see cref="PauseQueryGlobal"/> changes (automatically while TPPA borrows or returns the port, or by hand)
+        /// so the "Pause polling '?'" checkbox always mirrors the real state.</summary>
         public static event Action<bool> PauseQueryChanged;
 
         public static bool PauseQueryGlobal
@@ -103,9 +103,9 @@ namespace MLAstroRPA.Services
         private ManagementEventWatcher? _deviceChangeWatcher;
 
         // ===== LINK WATCHDOG (PC client) =====
-        // Phiên đã handshake OK mà KHÔNG nhận được bất kỳ dữ liệu nào từ thiết bị trong
-        // LinkWatchdogTimeoutMs (Serial: telemetry trả lời poll '?'; Wireless: telemetry/log đẩy
-        // liên tục) => coi như MẤT LIÊN LẠC, tự Disconnect (toast + dòng System log; việc nhả
+        // A session that handshook OK but then received no data from the device for
+        // LinkWatchdogTimeoutMs (Serial: telemetry answers the '?' poll; Wireless: telemetry/log push
+        // continuously) counts as a LOST LINK, so it disconnects itself (toast + system log line).
         // quyền TPPA do Disconnect() -> RaiseExternalState(false) lo sẵn).
         private const int LinkWatchdogTimeoutMs = 5000;
         private System.Timers.Timer? _linkWatchdogTimer;
@@ -135,29 +135,29 @@ namespace MLAstroRPA.Services
         }
 
         // =====================================================================
-        // Kết nối dùng chung cho plugin ngoài trong cùng process NINA (vd TPPA).
-        // MLAstro là CHỦ cổng COM duy nhất; plugin khác gọi qua API này để:
-        //   - EnsureExternalConnectedAsync(): mở cổng (auto-open) nếu chưa mở.
-        //   - Disconnect(): đóng cổng (đóng chung cho cả 2 phía).
-        //   - Send(text): ghi lệnh (dùng chung write-lock, không đứt giữa dòng).
-        //   - AddExternalLineListener / AddExternalStateListener: nhận dòng RX + trạng thái.
-        // (Dùng method + Action thay vì event thuần để plugin ngoài truy cập qua reflection dễ.)
+        // Shared connection for external plugins inside the same NINA process (e.g. TPPA).
+        // MLAstro is the ONLY owner of the COM port; other plugins call this API to:
+        //   - EnsureExternalConnectedAsync(): open the port (auto-open) when it is closed.
+        //   - Disconnect(): close the port (shared by both sides).
+        //   - Send(text): write a command (shared write lock, never split mid-line).
+        //   - AddExternalLineListener / AddExternalStateListener: receive RX lines + state.
+        // (Methods + Action instead of plain events keep reflection access easy for other plugins.)
         // =====================================================================
-        private readonly object _txLock = new();               // khoá ghi tuần tự (MLAstro + plugin ngoài)
+        private readonly object _txLock = new();               // sequential write lock (MLAstro + external plugins)
         private readonly object _externalLock = new();
         private readonly List<Action<string>> _externalLineListeners = new();
         private readonly List<Action<bool>> _externalStateListeners = new();
         private readonly List<Action<string>> _externalStopListeners = new();
         private readonly List<Action<bool>> _externalControlListeners = new();
-        private bool _externalControlActive;    // true khi plugin ngoài (TPPA) đang GIỮ quyền điều khiển
+        private bool _externalControlActive;    // true while an external plugin (TPPA) HOLDS control
 
-        /// <summary>Cổng COM đang cấu hình (chủ cổng = MLAstro dùng cấu hình này).</summary>
+        /// <summary>COM port currently configured (MLAstro owns the port and uses this configuration).</summary>
         public string ConfiguredComPort => _settings.ComPort;
 
-        /// <summary>Baudrate đang cấu hình.</summary>
+        /// <summary>Baud rate currently configured.</summary>
         public int ConfiguredBaudRate => _settings.BaudRate;
 
-        /// <summary>Đăng ký nhận mọi dòng RX hoàn chỉnh (ok / error / &lt;telemetry&gt; / ERROR: / COMPLETED...).</summary>
+        /// <summary>Subscribe to every complete RX line (ok / error / &lt;telemetry&gt; / ERROR: / COMPLETED...).</summary>
         public void AddExternalLineListener(Action<string> listener)
         {
             if (listener == null) return;
@@ -173,7 +173,7 @@ namespace MLAstroRPA.Services
             lock (_externalLock) { _externalLineListeners.Remove(listener); }
         }
 
-        /// <summary>Đăng ký nhận thay đổi trạng thái mở/đóng cổng (arg = IsConnected).</summary>
+        /// <summary>Subscribe to open/close changes of the port (arg = IsConnected).</summary>
         public void AddExternalStateListener(Action<bool> listener)
         {
             if (listener == null) return;
@@ -189,14 +189,14 @@ namespace MLAstroRPA.Services
             lock (_externalLock) { _externalStateListeners.Remove(listener); }
         }
 
-        /// <summary>Tạm dừng poll "?" của MLAstro khi plugin ngoài (TPPA) đang chủ động điều khiển.</summary>
+        /// <summary>Pauses the MLAstro "?" poll while an external plugin (TPPA) is actively driving.</summary>
         public void SetExternalPauseQuery(bool pause) => PauseQueryGlobal = pause;
-        /// <summary>Đang có plugin ngoài (TPPA) GIỮ quyền điều khiển -&gt; MLAstro khoá UI (trừ STOP/E-STOP + CONNECTION).</summary>
+        /// <summary>An external plugin (TPPA) HOLDS control -&gt; MLAstro locks the UI (except STOP/E-STOP and CONNECTION).</summary>
         public bool IsExternalControlActive {
             get { lock (_externalLock) return _externalControlActive || (_wirelessProxy?.IsExternalControlActive == true); }
         }
 
-        // --- Kênh STOP / trả quyền (giữa MLAstro và plugin ngoài TPPA) ---
+        // --- STOP / hand-back channel (between MLAstro and the external TPPA plugin) ---
         public void AddExternalStopListener(Action<string> listener)
         {
             if (listener == null) return;
@@ -209,7 +209,7 @@ namespace MLAstroRPA.Services
             lock (_externalLock) { _externalStopListeners.Remove(listener); }
         }
 
-        /// <summary>Đăng ký nhận thay đổi "quyền điều khiển ngoài" (arg = IsExternalControlActive) để khoá/mở khoá UI.</summary>
+        /// <summary>Subscribe to "external control" changes (arg = IsExternalControlActive) to lock/unlock the UI.</summary>
         public void AddExternalControlListener(Action<bool> listener)
         {
             if (listener == null) return;
@@ -223,24 +223,24 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Bên MLAstro nhấn STOP/FORCE-STOP giữa chừng (hoặc đang điều khiển ngoài):
-        /// báo plugin ngoài (TPPA) phải DỪNG PA ngay lập tức.
+        /// MLAstro pressed STOP/FORCE-STOP mid-run (or external control is active):
+        /// tell the external plugin (TPPA) to STOP the polar alignment immediately.
         /// </summary>
         public void NotifyExternalStop(string reason)
         {
             Logger.Info($"[MLAstro] NotifyExternalStop: {reason}");
             RaiseExternalStop(reason);
-            // Wireless: báo cho phiên WebSocket (driver TPPA dùng chung service này qua proxy).
+            // Wireless: notify the WebSocket session (the TPPA driver shares this service through the proxy).
             try { _wirelessProxy?.NotifyExternalStop(reason); } catch { }
         }
 
         /// <summary>
-        /// TPPA BẮT ĐẦU giữ quyền điều khiển: đảm bảo cổng mở (auto-open cho cả MLAstro),
-        /// đánh dấu đang điều khiển ngoài (MLAstro khoá UI) và tạm dừng poll "?" của MLAstro.
+        /// TPPA STARTS holding control: make sure the port is open (auto-open for MLAstro too),
+        /// mark external control (MLAstro locks the UI) and pause the MLAstro "?" poll.
         /// </summary>
         public async Task<bool> BeginExternalControlAsync()
         {
-            // Wireless: mở phiên WebSocket nếu chưa có rồi đánh dấu external control trên proxy.
+            // Wireless: open the WebSocket session if needed, then mark external control on the proxy.
             if (WirelessActive)
             {
                 var okWireless = await _wirelessProxy!.BeginExternalControlAsync().ConfigureAwait(false);
@@ -259,8 +259,8 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// TPPA THẢ quyền điều khiển: KHÔNG đóng cổng - chỉ ngắt liên lạc điều khiển,
-        /// MLAstro nhận lại quyền (mở khoá UI) và poll "?" trở lại.
+        /// TPPA RELEASES control: the port is NOT closed - only the control link is dropped,
+        /// MLAstro gets control back (UI unlocked) and the "?" poll resumes.
         /// </summary>
         public void EndExternalControl()
         {
@@ -272,18 +272,18 @@ namespace MLAstroRPA.Services
                     RaiseExternalControl(false);
                 }
             }
-            // Trả quyền trên transport wireless (nếu có) để phiên WS trở lại trạng thái monitor.
+            // Hand control back on the wireless transport (if any) so the WS session returns to monitoring.
             try { _wirelessProxy?.EndExternalControl(); } catch { }
-            // Luôn nhả cờ tạm dừng poll toàn cục, kể cả khi cờ active đã bị Disconnect() xoá từ trước.
-            // Nếu không, PauseQueryGlobal kẹt true vĩnh viễn -> MLAstro ngừng poll "?" cho tới khi có
-            // chu kỳ mượn mới hoặc gạt tay tắt pause.
+            // Always clear the global poll pause, even when the active flag was already cleared by Disconnect().
+            // Otherwise PauseQueryGlobal stays true forever -> MLAstro stops polling "?" until a
+            // new borrow cycle runs or the pause is switched off by hand.
             PauseQueryGlobal = false;
             Logger.Info("[MLAstro] EndExternalControl: released control to local UI (port stays open).");
         }
 
         /// <summary>
-        /// Đảm bảo cổng đã mở (theo cấu hình MLAstro) cho plugin ngoài dùng.
-        /// Nếu MLAstro chưa mở thì mở luôn -&gt; cả 2 plugin cùng báo Connected.
+        /// Makes sure the port is open (using the MLAstro configuration) for an external plugin.
+        /// When MLAstro has not opened it yet, it opens now -&gt; both plugins report Connected.
         /// </summary>
         public async Task<bool> EnsureExternalConnectedAsync()
         {
@@ -291,7 +291,7 @@ namespace MLAstroRPA.Services
             return await ConnectAsync(ConfiguredComPort, ConfiguredBaudRate).ConfigureAwait(false);
         }
 
-        /// <summary>Ghi tuần tự qua write-lock (tránh 2 luồng ghi đè giữa dòng lệnh).</summary>
+        /// <summary>Sequential write through the write lock (two threads must not interleave a command).</summary>
         private void WriteBytes(byte[] data)
         {
             lock (_txLock)
@@ -311,7 +311,7 @@ namespace MLAstroRPA.Services
             foreach (var l in copy)
             {
                 try { l(line); }
-                catch { /* plugin ngoài lỗi không làm ảnh hưởng MLAstro */ }
+                catch { /* an external plugin failing must not affect MLAstro */ }
             }
         }
 
@@ -326,7 +326,7 @@ namespace MLAstroRPA.Services
             foreach (var l in copy)
             {
                 try { l(connected); }
-                catch { /* bỏ qua */ }
+                catch { /* ignore */ }
             }
         }
 
@@ -341,7 +341,7 @@ namespace MLAstroRPA.Services
             foreach (var l in copy)
             {
                 try { l(reason); }
-                catch { /* bỏ qua */ }
+                catch { /* ignore */ }
             }
         }
 
@@ -356,7 +356,7 @@ namespace MLAstroRPA.Services
             foreach (var l in copy)
             {
                 try { l(active); }
-                catch { /* bỏ qua */ }
+                catch { /* ignore */ }
             }
         }
 
@@ -407,11 +407,11 @@ namespace MLAstroRPA.Services
         public bool IsConnected => _serialPort?.IsOpen == true || WirelessActive;
 
         /// <summary>
-        /// Đường đang dùng để nói chuyện với thiết bị (dùng cho HeaderBar):
-        ///   "AP"  = wireless, firmware báo phiên WS này vào qua hotspot của ESP32;
-        ///   "STA" = wireless, đi qua router mà ESP32 đã join;
-        ///   "COM" = cáp USB/Serial.
-        /// Rỗng khi chưa kết nối.
+        /// Route currently used to talk to the device (used by the HeaderBar):
+        ///   "AP"  = wireless, the firmware reports this WS session arriving through the ESP32 hotspot;
+        ///   "STA" = wireless, through the router the ESP32 joined;
+        ///   "COM" = USB/Serial cable.
+        /// Empty while not connected.
         /// </summary>
         public string LinkPath => WirelessActive
             ? _wirelessProxy!.LinkPath
@@ -419,9 +419,9 @@ namespace MLAstroRPA.Services
 
         // ==================================================================
         // FACADE cho transport WIRELESS (WebSocket)
-        // Khi có proxy đang kết nối, service này đóng vai "cổng vào duy nhất" cho UI/dock/controller:
-        // trạng thái, gửi lệnh và external-control đều đi qua WebSocket, còn cổng COM không mở.
-        // (Mỗi lúc chỉ 1 transport hoạt động - do người dùng chọn ở tab CONNECTION.)
+        // While a proxy is connected this service is the single entry point for UI/dock/controller:
+        // state, commands and external control all go through the WebSocket, and the COM port stays closed.
+        // (Only one transport runs at a time - the user picks it on the CONNECTION tab.)
         // ==================================================================
         private MlastroWebSocketService? _wirelessProxy;
 
@@ -457,7 +457,7 @@ namespace MLAstroRPA.Services
 
         private void OnWirelessProxyPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            // Cho dock/controller thấy đúng trạng thái kết nối khi đang dùng transport wireless.
+            // Show the dock/controller the real connection state while the wireless transport is in use.
             OnPropertyChanged(nameof(IsConnected));
             OnPropertyChanged(nameof(ConnectionStatus));
             OnPropertyChanged(nameof(HandshakeStatus));
@@ -465,15 +465,15 @@ namespace MLAstroRPA.Services
             OnPropertyChanged(nameof(LinkPath));
             InvokeOnUiThread(() => RaiseExternalState(IsConnected));
 
-            // Phiên wireless vừa kết nối: bật watchdog + đánh dấu "còn sống" từ frame đầu tiên, để
-            // trường hợp "kết nối nhưng thiết bị im lặng" cũng bị ngắt sau LinkWatchdogTimeoutMs.
+            // The wireless session just connected: start the watchdog and mark it alive from the first frame, so
+            // "connected but the device stays silent" also disconnects after LinkWatchdogTimeoutMs.
             if (_wirelessProxy?.IsConnected == true)
             {
                 TouchLinkAlive();
             }
         }
 
-        /// <summary>Transport wireless: cập nhật firmware version nhận được từ handshake/init snapshot.</summary>
+        /// <summary>Wireless transport: update the firmware version received from the handshake/init snapshot.</summary>
         public void SetWirelessFirmwareVersion(string version)
         {
             if (string.IsNullOrWhiteSpace(version))
@@ -876,11 +876,11 @@ namespace MLAstroRPA.Services
                 AppendTerminalEntry(SerialTerminalEntry.Connected(ConnectionStatus));
                 OnPropertyChanged(nameof(IsConnected));
                 Logger.Info($"[MLAstro] Serial connected: {portName} @ {baudRate} (8-N-1)");
-                // Đồng bộ cổng đang kết nối vào cài đặt để dropdown "COM Port" trên CONNECTION tab tự
-                // chọn đúng cổng vừa mở (kể cả khi cổng do TPPA auto-detect tìm ra & mở qua chủ MLAstro).
+                // Sync the port in use into the settings so the "COM Port" dropdown on the CONNECTION tab
+                // selects the port that was just opened (also when TPPA auto-detected and opened it through MLAstro).
                 _settings.ComPort = portName;
-                // Mở cổng mới thành công: nhả cờ tạm dừng poll toàn cục (phòng khi kẹt từ phiên TPPA mượn
-                // trước đó) để MLAstro poll "?" lại ngay từ đầu.
+                // A new port opened successfully: clear the global poll pause (in case it was stuck from an earlier
+                // TPPA borrow) so MLAstro polls "?" again from the start.
                 PauseQueryGlobal = false;
                 StartConnectionCheckTimer();
                 StartDeviceChangeWatcher();
@@ -956,7 +956,7 @@ namespace MLAstroRPA.Services
 
         public void Disconnect()
         {
-            // Transport wireless đang hoạt động → nhả quyền + đóng WebSocket (không đụng cổng COM).
+            // The wireless transport is running -> release control and close the WebSocket (the COM port is untouched).
             if (WirelessActive)
             {
                 try { _wirelessProxy!.Disconnect(); } catch { }
@@ -971,7 +971,7 @@ namespace MLAstroRPA.Services
 
             _connectionCheckFailures = 0;
 
-            // Nếu có plugin ngoài (TPPA) đang GIỮ quyền: báo dừng PA + trả quyền về UI trước khi đóng cổng.
+            // If an external plugin (TPPA) HOLDS control: ask it to stop the PA and hand control back before closing the port.
             lock (_externalLock)
             {
                 if (_externalControlActive)
@@ -981,8 +981,8 @@ namespace MLAstroRPA.Services
                     RaiseExternalStop("MLAstro disconnected");
                 }
             }
-            // MLAstro đóng cổng (có thể đang giữa phiên TPPA mượn): NHẢ cờ tạm dừng poll toàn cục để
-            // lần kết nối sau poll "?" bình thường (không bị kẹt bởi phiên mượn trước).
+            // MLAstro closes the port (possibly in the middle of a TPPA borrow): CLEAR the global poll pause so
+            // the next connection polls "?" normally (not stuck by the earlier borrow).
             PauseQueryGlobal = false;
 
             if (_serialPort == null)
@@ -993,12 +993,12 @@ namespace MLAstroRPA.Services
                 return;
             }
 
-            // Capture trước khi gọi bất kỳ method nào (tránh CS8602 do trình biên dịch reset null-state của field).
+            // Capture before calling any method (avoids CS8602 because the compiler resets the field null state).
             var portName = _serialPort.PortName;
 
-            // Best-effort: gửi lệnh "Disconnect\n" cho firmware NGAY TRƯỚC khi đóng cổng, để thiết bị
-            // nhả handshake chủ động. Quan trọng khi Communication Watchdog TẮT (firmware không tự
-            // nhả handshake) — nếu không gửi, thiết bị sẽ giữ trạng thái "Serial control" vô thời hạn.
+            // Best effort: send "Disconnect\n" to the firmware RIGHT BEFORE closing the port so the device
+            // releases the handshake on its own. This matters when the Communication Watchdog is OFF (the firmware
+            // does not release it) - without the command the device keeps the "Serial control" state forever.
             if (_serialPort?.IsOpen == true)
             {
                 try
@@ -1058,7 +1058,7 @@ namespace MLAstroRPA.Services
 
         public bool Send(string text)
         {
-            // Transport wireless: dịch lệnh text sang JSON và gửi qua WebSocket.
+            // Wireless transport: translate the text command to JSON and send it over the WebSocket.
             if (WirelessActive)
             {
                 return _wirelessProxy!.Send(text);
@@ -1109,7 +1109,7 @@ namespace MLAstroRPA.Services
                 return false;
             }
 
-            // Wireless: firmware tự đẩy telemetry ~250 ms, không cần poll "?".
+            // Wireless: the firmware pushes telemetry about every 250 ms, so no "?" poll is needed.
             if (WirelessActive)
             {
                 return true;
@@ -1234,7 +1234,7 @@ namespace MLAstroRPA.Services
                     Array.Resize(ref buffer, bytesRead);
                 }
 
-                TouchLinkAlive();   // nuôi watchdog: vừa có dữ liệu từ thiết bị qua COM
+                TouchLinkAlive();   // feeds the watchdog: data just arrived from the device over COM
                 AppendTerminalEntry(SerialTerminalEntry.Received(buffer, _serialPort.Encoding, HexDisplay));
                 var receivedText = _serialPort.Encoding.GetString(buffer);
 
@@ -1293,8 +1293,8 @@ namespace MLAstroRPA.Services
                 return;
             }
 
-            // Bucket 1c: marker "All Setting Saved" — firmware xác nhận ĐÃ ghi FRAM xong (Save&Reboot:1).
-            // Đây là tín hiệu DUY NHẤT để plugin biết đã lưu thành công và được phép reset ESP qua EN pin.
+            // Bucket 1c: the "All Setting Saved" marker - the firmware confirms the FRAM write finished (Save&Reboot:1).
+            // This is the ONLY signal that the save worked and that the ESP may be reset over the EN pin.
             if (line.IndexOf(AllSettingsSavedMarker, StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 LogReceivedLine(line);
@@ -1386,10 +1386,10 @@ namespace MLAstroRPA.Services
         /// </summary>
         private void ProcessErrorTelemetry(string line)
         {
-            // BẮT BUỘC đúng dòng ERROR telemetry của firmware ("ERROR:Code:value,Code:value,...").
-            // Hàm này còn được gọi từ InjectIncomingText (transport wireless); nếu không kiểm tra prefix
-            // thì dòng telemetry thường dạng <STATUS|Mpos:x,y|>WSta:1,Home:1,AzRM:1,... sẽ bị parse
-            // thành mã lỗi và sinh ra các WARNING giả trong Alarm History (WSta/Home/AzRM/AlRM/Back).
+            // MUST match the firmware ERROR telemetry line exactly ("ERROR:Code:value,Code:value,...").
+            // This method is also called from InjectIncomingText (wireless transport); without the prefix check
+            // an ordinary telemetry line like <STATUS|Mpos:x,y|>WSta:1,Home:1,AzRM:1,... would be parsed
+            // as error codes and produce fake WARNINGS in the Alarm History (WSta/Home/AzRM/AlRM/Back).
             if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("ERROR:", StringComparison.Ordinal))
             {
                 return;
@@ -1415,19 +1415,19 @@ namespace MLAstroRPA.Services
                     }
                 }
 
-                // `CmdRf:N` = bitfield các LỆNH BỊ TỪ CHỐI vì soft-limit (mỗi bit 1 loại lệnh; bit
-                // BẬT ngay khi lệnh bị từ chối, firmware tự TẮT sau ~1.5 s nếu loại lệnh đó không còn
-                // bị từ chối nữa). Bung thành từng mã riêng với giá trị 1 = WARNING để bảng Alarm
-                // hiển thị mỗi loại lệnh một dòng có tên rõ ràng (thay vì dòng "CmdRf: 5" vô nghĩa).
+                // `CmdRf:N` = bitfield of commands REFUSED because of a soft limit (one bit per command type; a bit
+                // turns ON as soon as the command is refused and the firmware clears it after ~1.5 s once that
+                // command type is refused no longer). It is split into separate codes with value 1 = WARNING so the Alarm
+                // table shows one clearly named row per command type (instead of a meaningless "CmdRf: 5" row).
                 if (dict.Remove("CmdRf", out var refusedBits))
                 {
-                    if ((refusedBits & 0x01) != 0) dict["RfRelAz"] = 1;   // relative move AZ vượt soft-limit
-                    if ((refusedBits & 0x02) != 0) dict["RfRelAl"] = 1;   // relative move ALT vượt soft-limit
-                    if ((refusedBits & 0x04) != 0) dict["RfAlnAz"] = 1;   // align: target AZ ngoài giới hạn
-                    if ((refusedBits & 0x08) != 0) dict["RfAlnAl"] = 1;   // align: target ALT ngoài giới hạn
-                    if ((refusedBits & 0x10) != 0) dict["RfJogAz"] = 1;   // jog AZ tại giới hạn
-                    if ((refusedBits & 0x20) != 0) dict["RfJogAl"] = 1;   // jog ALT tại giới hạn
-                    if ((refusedBits & 0x40) != 0) dict["RfAlnOv"] = 1;   // align nhánh overshoot (ALT)
+                    if ((refusedBits & 0x01) != 0) dict["RfRelAz"] = 1;   // relative AZ move past the soft limit
+                    if ((refusedBits & 0x02) != 0) dict["RfRelAl"] = 1;   // relative ALT move past the soft limit
+                    if ((refusedBits & 0x04) != 0) dict["RfAlnAz"] = 1;   // align: target AZ outside the limits
+                    if ((refusedBits & 0x08) != 0) dict["RfAlnAl"] = 1;   // align: target ALT outside the limits
+                    if ((refusedBits & 0x10) != 0) dict["RfJogAz"] = 1;   // jog AZ at the limit
+                    if ((refusedBits & 0x20) != 0) dict["RfJogAl"] = 1;   // jog ALT at the limit
+                    if ((refusedBits & 0x40) != 0) dict["RfAlnOv"] = 1;   // align overshoot branch (ALT)
                 }
 
                 var state = new DriverErrorState(dict);
@@ -1456,8 +1456,8 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Xoá trạng thái lỗi cũ khi bắt đầu phiên mới (transport wireless không nhận được dòng
-        /// ERROR: của firmware như đường serial, nên cần chủ động đưa về trạng thái sạch).
+        /// Clears the old error state when a new session starts (the wireless transport never receives the
+        /// firmware ERROR: lines like serial does, so the state has to be reset on purpose).
         /// </summary>
         public void ResetErrorStateForNewSession()
         {
@@ -1471,7 +1471,7 @@ namespace MLAstroRPA.Services
         /// </summary>
         public async Task<bool> SendHandshakeAsync()
         {
-            // Wireless: handshake (MLAstroRPA-TC) đã được thực hiện bằng JSON ngay khi kết nối WebSocket.
+            // Wireless: the handshake (MLAstroRPA-TC) already happened as JSON when the WebSocket connected.
             if (WirelessActive)
             {
                 return _wirelessProxy!.HandshakeStatus == "OK!";
@@ -1482,7 +1482,7 @@ namespace MLAstroRPA.Services
 
         public async Task<bool> SendCommandAndAwaitOkAsync(string text)
         {
-            // Wireless: dịch chuỗi cấu hình text sang saveConfig/applyConfig và chờ xác nhận của thiết bị.
+            // Wireless: translate the text configuration string into saveConfig/applyConfig and wait for the device.
             if (WirelessActive)
             {
                 return await _wirelessProxy!.SendCommandAndAwaitOkAsync(text).ConfigureAwait(false);
@@ -1491,13 +1491,13 @@ namespace MLAstroRPA.Services
             return await SendAndAwaitOkAsync(text).ConfigureAwait(false);
         }
 
-        /// <summary>Marker firmware in ra NGAY SAU khi ghi FRAM xong (lệnh <c>Save&amp;Reboot:1</c>).</summary>
+        /// <summary>The marker the firmware prints RIGHT AFTER the FRAM write (command <c>Save&amp;Reboot:1</c>).</summary>
         private const string AllSettingsSavedMarker = "All Setting Saved";
         private TaskCompletionSource<bool>? _allSettingsSavedTcs;
 
         /// <summary>
-        /// Tạo sẵn chỗ chờ marker "All Setting Saved" — PHẢI gọi TRƯỚC khi gửi lệnh Save&amp;Reboot, vì
-        /// firmware in marker ngay khi ghi FRAM xong (có thể tới trước khi ta bắt đầu chờ).
+        /// Prepares the wait for the "All Setting Saved" marker - it MUST be called BEFORE sending Save&amp;Reboot, because
+        /// the firmware prints the marker as soon as the FRAM write ends (possibly before the wait starts).
         /// </summary>
         public void ArmAllSettingsSavedWaiter()
         {
@@ -1505,8 +1505,8 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Chờ marker "All Setting Saved" trong <paramref name="timeoutMs"/>. Chỉ khi trả về <c>true</c>
-        /// mới được coi là ĐÃ LƯU THÀNH CÔNG vào FRAM (và mới được phép reset ESP qua EN pin).
+        /// Waits for the "All Setting Saved" marker within <paramref name="timeoutMs"/>. Only a <c>true</c> result
+        /// means the save REALLY reached FRAM (and only then may the ESP be reset over the EN pin).
         /// </summary>
         public async Task<bool> WaitForAllSettingsSavedAsync(int timeoutMs = 6000)
         {
@@ -1557,11 +1557,11 @@ namespace MLAstroRPA.Services
             StopLinkWatchdog();
         }
 
-        /// <summary>Đánh dấu vừa nhận dữ liệu từ thiết bị (mọi transport) — nuôi watchdog.</summary>
+        /// <summary>Marks that data just arrived from the device (any transport) - it feeds the watchdog.</summary>
         private void TouchLinkAlive()
         {
             _lastRxUtc = DateTime.UtcNow;
-            StartLinkWatchdog();   // lazy: tự bật ở dữ liệu ĐẦU TIÊN sau khi kết nối
+            StartLinkWatchdog();   // lazy: starts on the FIRST data after a connection
         }
 
         private void StartLinkWatchdog()
@@ -1591,9 +1591,9 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Chạy mỗi giây: handshake OK mà thiết bị im lặng quá LinkWatchdogTimeoutMs => tự ngắt kết nối.
-        /// Bỏ qua khi: chưa kết nối · chưa handshake xong (để luồng handshake tự báo NO ANSWER rồi xử lý) ·
-        /// poll '?' đang tạm dừng trên Serial (TPPA mượn cổng — thiết bị im lặng là CHỦ Ý).
+        /// Runs every second: a handshook link that stays silent past LinkWatchdogTimeoutMs disconnects itself.
+        /// Skipped when: not connected - the handshake has not finished (the handshake path reports NO ANSWER itself) -
+        /// the "?" poll is paused on Serial (TPPA borrows the port - the silence is INTENTIONAL).
         /// </summary>
         private void CheckLinkWatchdog()
         {
@@ -1936,10 +1936,10 @@ namespace MLAstroRPA.Services
 
             try
             {
-                // Regex cho phép giá trị RỖNG ([^\r\n]*): mật khẩu rỗng trên thiết bị cũng là thông tin
-                // ĐÚNG cần phản ánh vào settings. Trước đây bỏ qua giá trị rỗng/không khớp nên UI cứ
-                // hiện mật khẩu cũ trong khi thiết bị đã mất mật khẩu (nguyên nhân "STA fail reason 15"
-                // mà tưởng là lỗi router).
+                // The regex allows an EMPTY value ([^\r\n]*): an empty password on the device is information
+                // that MUST reach the settings too. Empty or unmatched values used to be ignored, so the UI
+                // kept showing the old password while the device had lost it (the real cause of "STA fail
+                // reason 15" that looked like a router problem).
                 var apMatch = Regex.Match(receivedText, @"\bAPpa:([^\r\n]*)");
                 if (apMatch.Success)
                 {
@@ -1970,13 +1970,13 @@ namespace MLAstroRPA.Services
 
         // =====================================================================
         // Transport WIRELESS (WebSocket)
-        // Dữ liệu nhận từ WebSocket được tổng hợp lại thành ĐÚNG định dạng text của firmware
-        // serial rồi bơm vào CÙNG pipeline xử lý ở đây. Nhờ vậy TelemetryParser,
-        // TelemetryDataReceived, CompletionReceived, ErrorStateChanged và toàn bộ UI
-        // (CONTROL + HARDWARE SETTING) hoạt động y như khi dùng cổng COM.
+        // Data received from the WebSocket is reassembled into the EXACT text format of the firmware
+        // serial link and pushed into the SAME pipeline handled here. That way TelemetryParser,
+        // TelemetryDataReceived, CompletionReceived, ErrorStateChanged and the whole UI
+        // (CONTROL + HARDWARE SETTING) behave exactly like they do over the COM port.
         // =====================================================================
 
-        /// <summary>Bơm một dòng text đã tổng hợp từ WebSocket (telemetry / ok / ERROR: / COMPLETED).</summary>
+        /// <summary>Injects one text line assembled from the WebSocket (telemetry / ok / ERROR: / COMPLETED).</summary>
         public void InjectIncomingText(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -1984,11 +1984,11 @@ namespace MLAstroRPA.Services
                 return;
             }
 
-            TouchLinkAlive();   // nuôi watchdog: vừa có dữ liệu từ thiết bị qua WebSocket
+            TouchLinkAlive();   // feeds the watchdog: data just arrived from the device over the WebSocket
             try { ProcessTelemetryData(text); }
             catch (Exception ex) { Logger.Warning($"[MLAstro][WS] Telemetry inject failed: {ex.Message}"); }
 
-            // Chỉ dòng ERROR: của firmware mới là mã lỗi (ProcessErrorTelemetry cũng tự bảo vệ).
+            // Only the firmware ERROR: lines are error codes (ProcessErrorTelemetry guards itself too).
             if (text.StartsWith("ERROR:", StringComparison.Ordinal))
             {
                 try { ProcessErrorTelemetry(text); }
@@ -2140,11 +2140,11 @@ namespace MLAstroRPA.Services
             InvokeOnUiThread(() =>
             {
 
-                // Mới nhất lên ĐẦU (index 0), cũ nhất dần về CUỐI.
+                // Newest at the TOP (index 0), oldest towards the END.
                 TerminalEntries.Insert(0, entry);
                 while (TerminalEntries.Count > MaxTerminalEntries)
                 {
-                    TerminalEntries.RemoveAt(TerminalEntries.Count - 1); // bỏ entry cũ nhất (ở cuối)
+                    TerminalEntries.RemoveAt(TerminalEntries.Count - 1); // drop the oldest entry (at the end)
                 }
             });
         }
@@ -2416,9 +2416,9 @@ namespace MLAstroRPA.Services
                             if (int.TryParse(value, out var wifiStatus))
                                 data.WifiConnected = wifiStatus == 1;
                             break;
-                        // Chất lượng đường STA: 0 = chưa vào router, 1 = có router nhưng không internet,
-                        // 2 = có internet (firmware dò bằng TCP probe; token WQu do firmware serial phát
-                        // hoặc do MlastroWebSocketService chuyển từ field `sta_qual`).
+                        // STA link quality: 0 = not joined to the router, 1 = router but no internet,
+                        // 2 = internet (the firmware probes with TCP; the WQu token is sent by the serial firmware
+                        // or mapped by MlastroWebSocketService from the `sta_qual` field).
                         case "WQu":
                             if (int.TryParse(value, out var staQuality))
                                 data.StaQuality = staQuality;
@@ -2467,8 +2467,8 @@ namespace MLAstroRPA.Services
                             data.StationIP = value;
                             break;
 
-                        // AP của thiết bị (hotspot): IP + "đã lên hay chưa" — dùng cho dòng
-                        // "AP: Connected/Ready/Error <IP>" trên HeaderBar.
+                        // Device AP (hotspot): IP + whether it is up - used by the
+                        // "AP: Connected/Ready/Error <IP>" line in the HeaderBar.
                         case "APip":
                             data.ApIp = value;
                             break;
@@ -2536,7 +2536,7 @@ namespace MLAstroRPA.Services
         // System
         public int SpeedLevel { get; set; } = 3;
         public bool WifiConnected { get; set; }
-        /// <summary>Chất lượng đường STA: 0 = chưa vào router, 1 = có router nhưng không internet, 2 = có internet.</summary>
+        /// <summary>STA link quality: 0 = not joined to the router, 1 = router but no internet, 2 = internet.</summary>
         public int StaQuality { get; set; }
         public bool IsHomed { get; set; }
 
@@ -2574,9 +2574,9 @@ namespace MLAstroRPA.Services
 
         // Network
         public string StationIP { get; set; } = null!;
-        /// <summary>IP hotspot (AP) của thiết bị (token APip).</summary>
+        /// <summary>Hotspot (AP) IP of the device (token APip).</summary>
         public string ApIp { get; set; } = null!;
-        /// <summary>AP của thiết bị đã lên và có IP chưa (token APrd: 1 = có).</summary>
+        /// <summary>Whether the device AP is up and has an IP (token APrd: 1 = yes).</summary>
         public bool ApReady { get; set; }
     }
 
@@ -2634,8 +2634,8 @@ namespace MLAstroRPA.Services
         };
 
         /// <summary>
-        /// Nhãn đánh dấu loại nội dung hiển thị ở đầu dòng:
-        /// TX: (Sent) / RX: (Received) / 🔔 (Connected &amp; Disconnected — thông báo, không phải TX/RX).
+        /// Marker label for the kind of content shown at the start of the line:
+        /// TX: (Sent) / RX: (Received) / <bell> (Connected &amp; Disconnected - a notice, not TX/RX).
         /// </summary>
         public string Marker => EntryType switch
         {
@@ -3012,8 +3012,8 @@ namespace MLAstroRPA.Services
             "AzSL" => "AZ soft limit reached",
             "AlSL" => "ALT soft limit reached",
             "Esc" => "Hard-limit escape mode",
-            // Lệnh bị TỪ CHỐI vì soft-limit — bitfield `CmdRf` của ERROR telemetry (xem
-            // ProcessErrorTelemetry: mỗi bit được bung thành 1 mã riêng, giá trị 1 = WARNING).
+            // Command REFUSED because of a soft limit - the `CmdRf` bitfield of the ERROR telemetry (see
+            // ProcessErrorTelemetry: every bit becomes its own code with value 1 = WARNING).
             "RfRelAz" => "AZ relative move refused (soft limit)",
             "RfRelAl" => "ALT relative move refused (soft limit)",
             "RfAlnAz" => "AZ align target out of soft limit",

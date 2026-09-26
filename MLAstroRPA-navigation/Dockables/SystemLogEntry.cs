@@ -5,7 +5,7 @@ using System.Windows.Media;
 
 namespace MLAstroRPA.Dockables
 {
-    /// <summary>Mức độ của một dòng System log (giống class CSS của Web UI).</summary>
+    /// <summary>Level of a system log line (mirrors the Web UI CSS class).</summary>
     public enum SystemLogLevel
     {
         Info,
@@ -18,42 +18,42 @@ namespace MLAstroRPA.Dockables
     }
 
     /// <summary>
-    /// Một dòng trong bảng System log ở tab CONNECTION — mô phỏng đúng bảng System Log của Web UI:
-    /// có timestamp phía trước, tô màu theo từ khóa, dòng mới nhất nằm trên cùng.
-    /// Chỉ chứa thông báo của firmware/plugin (không có TX/RX frame thô).
+    /// One line of the System log table on the CONNECTION tab - it mirrors the Web UI System Log:
+    /// a timestamp in front, colour by keyword, newest line on top.
+    /// Firmware/plugin messages only (no raw TX/RX frames).
     /// </summary>
     public class SystemLogEntry
     {
         public SystemLogEntry(string message, SystemLogLevel level, DateTime timestamp)
         {
-            // Web UI dùng toLocaleTimeString() → đúng định dạng giờ NGẮN của locale hệ thống
-            // (vi-VN: "17:07:51" 24 giờ; en-US: "5:07:51 PM"). Dùng pattern "t" của .NET — cũng lấy
-            // từ locale hệ thống — để cột thời gian của plugin khớp y hệt bảng log của web.
+            // The Web UI uses toLocaleTimeString() -> the SHORT time format of the system locale
+            // (vi-VN: "17:07:51" 24-hour; en-US: "5:07:51 PM"). The .NET "t" pattern - also taken from
+            // the system locale - keeps the plugin time column identical to the web log table.
             Time = timestamp.ToString("t", CultureInfo.CurrentCulture);
             Message = message ?? string.Empty;
             Level = level;
         }
 
-        /// <summary>Thời điểm, định dạng giống Web UI (vd "11:08:06 PM").</summary>
+        /// <summary>Timestamp, formatted like the Web UI (e.g. "11:08:06 PM").</summary>
         public string Time { get; }
 
         public string Message { get; }
 
         public SystemLogLevel Level { get; }
 
-        /// <summary>Dòng hiển thị đầy đủ: "[thời gian] nội dung".</summary>
+        /// <summary>Full display line: "[time] content".</summary>
         public string DisplayText => $"[{Time}] {Message}";
 
-        /// <summary>Đậm như Web UI cho các dòng critical / apply / reboot-required.</summary>
+        /// <summary>Bold like the Web UI for critical / apply / reboot-required lines.</summary>
         public FontWeight FontWeightValue =>
             (Level == SystemLogLevel.Critical || Level == SystemLogLevel.Apply || Level == SystemLogLevel.RebootRequired)
                 ? FontWeights.Bold
                 : FontWeights.Normal;
 
         /// <summary>
-        /// Màu chữ cho một mức log, CHỌN THEO NỀN (tối/sáng) để luôn tương phản.
-        /// Nền tối dùng biến thể sáng hơn của đúng tông màu Web UI (đỏ/cam/xanh...) vì
-        /// Red/DarkOrange/Green gốc bị tối, khó đọc trên nền đen của theme NINA.
+        /// Text colour for a log level, PICKED FOR THE BACKGROUND (dark/light) so it always contrasts.
+        /// A dark background uses a lighter variant of the exact Web UI hue (red/orange/green...) because
+        /// plain Red/DarkOrange/Green is too dark to read on the black NINA theme.
         /// </summary>
         public static Brush BrushForLevel(SystemLogLevel level, bool darkBackground) => level switch
         {
@@ -65,11 +65,11 @@ namespace MLAstroRPA.Dockables
                 ? new SolidColorBrush(Color.FromRgb(0x64, 0xB5, 0xF6))
                 : new SolidColorBrush(Color.FromRgb(0x19, 0x76, 0xD2)),
             SystemLogLevel.Success => darkBackground ? new SolidColorBrush(Color.FromRgb(0x7C, 0xD9, 0x7C)) : Brushes.Green,
-            // Info: trắng trên nền tối, đen trên nền sáng → luôn tương phản (trước đây hard-code đen).
+            // Info: white on a dark background, black on a light one -> always contrasts (it used to be hard-coded black).
             _ => darkBackground ? Brushes.White : Brushes.Black
         };
 
-        /// <summary>Màu nhấn cho cụm "(Backlash applied)" — giống span.log-backlash của Web UI.</summary>
+        /// <summary>Accent colour for the "(Backlash applied)" phrase - like the Web UI span.log-backlash.</summary>
         public static Brush HighlightBrush(bool darkBackground)
             => darkBackground ? new SolidColorBrush(Color.FromRgb(0xFF, 0xB0, 0x4A)) : Brushes.Orange;
     }

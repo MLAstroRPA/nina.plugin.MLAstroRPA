@@ -260,10 +260,10 @@ namespace MLAstroRPA.Plugin
             richTextBox.Height = Math.Max(180, newHeight);
         }
 
-        // ===== SYSTEM LOG (Wireless) — bảng log kiểu Web UI =====
-        // Dùng RichTextBox (không phải ListBox) để bôi chọn + Copy được nội dung log,
-        // nền theo theme NINA (Background=Transparent), và kéo dãn chiều cao bằng Thumb
-        // (dùng lại OnSerialTerminalResizeThumbDragDelta: nó tìm RichTextBox trong cùng panel).
+        // ===== SYSTEM LOG (Wireless) - log table in the Web UI style =====
+        // A RichTextBox (not a ListBox) so the log can be selected and copied,
+        // the background follows the NINA theme (Background=Transparent), and a Thumb resizes the height
+        // (it reuses OnSerialTerminalResizeThumbDragDelta, which looks for a RichTextBox in the same panel).
         private sealed class SystemLogBinding
         {
             public System.Collections.ObjectModel.ObservableCollection<MLAstroRPA.Dockables.SystemLogEntry> Source = null!;
@@ -282,7 +282,7 @@ namespace MLAstroRPA.Plugin
                 return;
             }
 
-            // DataTemplate có thể load lại (đổi tab) → gỡ đăng ký cũ trước khi đăng ký mới.
+            // The DataTemplate can load again (tab switch) -> drop the old subscription before adding the new one.
             if (richTextBox.Tag is SystemLogBinding previous)
             {
                 previous.Source.CollectionChanged -= previous.Handler;
@@ -303,8 +303,8 @@ namespace MLAstroRPA.Plugin
         }
 
         /// <summary>
-        /// Đồng bộ document với collection: dòng mới được CHÈN LÊN ĐẦU (không dựng lại toàn bộ)
-        /// để không làm mất vùng bôi chọn khi người dùng đang copy log.
+        /// Keeps the document in sync with the collection: a new line is INSERTED AT THE TOP (no full rebuild)
+        /// so a selection survives while the user copies the log.
         /// </summary>
         private static void SyncSystemLog(RichTextBox richTextBox,
                                           System.Collections.ObjectModel.ObservableCollection<MLAstroRPA.Dockables.SystemLogEntry> entries,
@@ -331,7 +331,7 @@ namespace MLAstroRPA.Plugin
                         richTextBox.Document.Blocks.InsertBefore(first, paragraph);
                     }
 
-                    // Cắt bớt khi vượt giới hạn (collection tự trim ở cuối → xoá block cuối).
+                    // Trims when the limit is exceeded (the collection trims its tail -> drop the last block).
                     while (richTextBox.Document.Blocks.Count > entries.Count)
                     {
                         var last = richTextBox.Document.Blocks.LastBlock;
@@ -371,7 +371,7 @@ namespace MLAstroRPA.Plugin
                 PagePadding = new Thickness(2)
             };
 
-            // Chọn bảng màu theo nền thực tế của panel log (theme sáng hay tối) để chữ luôn tương phản.
+            // Picks the palette from the real background of the log panel (light or dark theme) so the text always contrasts.
             var darkBackground = IsDarkBackground(richTextBox);
 
             if (entries != null)
@@ -387,10 +387,10 @@ namespace MLAstroRPA.Plugin
         }
 
         /// <summary>
-        /// Một dòng log = nhiều Run: nội dung thường (màu theo mức + đậm theo mức) và cụm
-        /// "(Backlash applied)" tô CAM ĐẬM — giống span.log-backlash của Web UI.
-        /// Web UI nhấn đúng cụm đó và nếu chuỗi chỉ có "Backlash applied" thì BỌC THÊM ngoặc,
-        /// nên ở đây làm y hệt để nội dung hiển thị khớp web.
+        /// One log line is several Runs: the plain content (colour and boldness by level) and the
+        /// "(Backlash applied)" phrase in BRIGHT ORANGE - like the Web UI span.log-backlash.
+        /// The Web UI highlights exactly that phrase and WRAPS IT IN BRACKETS when the string is just "Backlash applied",
+        /// so the same is done here to keep the display identical to the web.
         /// </summary>
         private static System.Windows.Documents.Paragraph CreateSystemLogParagraph(MLAstroRPA.Dockables.SystemLogEntry entry, bool darkBackground)
         {
@@ -418,7 +418,7 @@ namespace MLAstroRPA.Plugin
                 return paragraph;
             }
 
-            // Khi chỉ có "Backlash applied" (kèm phần đuôi trong ngoặc) → web thay bằng "(Backlash applied)".
+            // When the text is just "Backlash applied" (with the bracketed tail) -> the web shows "(Backlash applied)".
             var highlightedText = token == bare ? withParens : token;
             var index = 0;
 
@@ -461,8 +461,8 @@ namespace MLAstroRPA.Plugin
         }
 
         /// <summary>
-        /// Xác định panel log đang nằm trên nền tối hay sáng (đi ngược visual tree tới brush nền
-        /// đặc đầu tiên) để chọn màu chữ tương phản với chính màu nền đó.
+        /// Finds out whether the log panel sits on a dark or a light background (walks the visual tree up to the first
+        /// solid background brush) so the text colour contrasts with that exact background.
         /// </summary>
         private static bool IsDarkBackground(DependencyObject element)
         {
@@ -488,7 +488,7 @@ namespace MLAstroRPA.Plugin
             {
             }
 
-            // Không xác định được → coi là nền tối (mặc định của NINA) để dùng chữ sáng dễ đọc hơn.
+            // Undetermined -> treat it as a dark background (the NINA default) so light text is used.
             return true;
         }
 
@@ -747,7 +747,7 @@ namespace MLAstroRPA.Plugin
 
                 if (shouldAutoScroll)
                 {
-                    // Dính ở ĐẦU (newest on top). Do NOT recompute ShouldAutoScroll here -
+                    // Sticks to the TOP (newest on top). Do NOT recompute ShouldAutoScroll here -
                     // it is only driven by the user's ScrollChanged handler, otherwise a
                     // transient layout state can wrongly flip it off and move the view.
                     scrollViewer.ScrollToTop();

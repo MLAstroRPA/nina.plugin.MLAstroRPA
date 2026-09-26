@@ -104,7 +104,7 @@
                                        VerticalAlignment="Center"/>
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <!-- Direction + label centring on the TRIANGLE CENTROID (trọng tâm), not on the
+                            <!-- Direction + label centring on the TRIANGLE CENTROID, not on the
                                  button centre: the centroid sits height/3 above the base, i.e. 65/6 = 10.8 px
                                  from the button centre toward the base. RenderTransform is used because it
                                  shifts the already-centred text without touching layout. -->
@@ -655,7 +655,7 @@
                             Background="#3A4654"
                             Foreground="White"
                             BorderBrush="#55636F"
-                            ToolTip="Xoá toàn bộ lịch sử Alarm"
+                            ToolTip="Clear the whole alarm history"
                             Command="{Binding ClearAlarmHistoryCommand}"/>
                     <DataGrid ItemsSource="{Binding AlarmHistory}"
                               AutoGenerateColumns="False"

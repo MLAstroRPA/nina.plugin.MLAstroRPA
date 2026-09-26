@@ -190,7 +190,7 @@ namespace MLAstroRPA.Dockables
 
         #region Relative Settings Event Handlers
 
-        /// <summary>Chỉ cho nhập CHỮ SỐ vào ô Relative D/M/S (giới hạn 0-5 / 0-59 / 0-59 do ViewModel ép).</summary>
+        /// <summary>Only DIGITS are accepted in the Relative D/M/S boxes (the ViewModel clamps 0-5 / 0-59 / 0-59).</summary>
         private void OnRelativeDigitsOnly(object sender, TextCompositionEventArgs e)
         {
             foreach (var c in e.Text)
@@ -203,7 +203,7 @@ namespace MLAstroRPA.Dockables
             }
         }
 
-        /// <summary>Enter trong ô D/M/S = chốt giá trị và gửi xuống thiết bị (giống thả nút +/-).</summary>
+        /// <summary>Enter in a D/M/S box commits the value and sends it to the device (same as releasing a +/- button).</summary>
         private void OnRelativeKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Enter && e.Key != Key.Return)
@@ -226,7 +226,7 @@ namespace MLAstroRPA.Dockables
             }
         }
 
-        /// <summary>Bắt đầu sửa bằng bàn phím ⇒ tạm dừng đồng bộ telemetry (giống khi bấm nút +/-).</summary>
+        /// <summary>Editing with the keyboard starts => the telemetry sync pauses (same as pressing a +/- button).</summary>
         private void OnRelativeFieldGotFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
             (DataContext as PolarAlignmentDockVM)?.StartEditingRelative();
@@ -320,9 +320,9 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Enter trong ô DMS (Az/Alt Error) → gửi ngay giá trị sai số của trục đó xuống firmware
-        /// (firmware ghi FRAM + broadcast cho web UI). Không nhấn Enter thì giá trị vẫn được gửi
-        /// khi bấm nút Align như trước. Trục lấy từ Tag="az"/"alt" của TextBox.
+        /// Enter in a DMS box (Az/Alt Error) -> sends that axis error to the firmware at once
+        /// (the firmware writes FRAM and broadcasts it to the web UI). Without Enter the value is still sent
+        /// when the Align button is pressed, as before. The axis comes from the TextBox Tag="az"/"alt".
         /// </summary>
         private void OnAlignmentInputKeyDown(object sender, KeyEventArgs e)
         {

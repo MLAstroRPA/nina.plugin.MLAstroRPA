@@ -7,13 +7,13 @@ param(
     [switch]$CreateRelease,
     [switch]$ReleaseOnly,
     [string]$Repo = "",
-    # File markdown chứa MÔ TẢ RELEASE (tùy chọn). Nếu truyền, nội dung file được dùng NGUYÊN VĂN làm
-    # release notes trên GitHub thay cho notes mặc định ngắn gọn — dùng cho flow agent tự viết
-    # description chi tiết (xem skill `release-repo`).
-    # Khi chạy TAY (không -NotesFile, không -Yes) script hiện MENU cho chọn 1 file trong
-    # Installer\MSI\ReleaseNotes\ bằng phím UP/DOWN + ENTER (ESC = dùng notes mặc định).
+    # Markdown file holding the RELEASE NOTES (optional). When passed, its content is used VERBATIM as the
+    # GitHub release notes instead of the short default notes - used by the agent flow that writes the
+    # detailed description itself (see the `release-repo` skill).
+    # When run BY HAND (no -NotesFile, no -Yes) the script shows a MENU to pick one file from
+    # Installer\MSI\ReleaseNotes\ with UP/DOWN + ENTER (ESC = use the default notes).
     [string]$NotesFile = "",
-    # Bỏ qua câu hỏi xác nhận tương tác ⇒ dùng khi chạy tự động trong phiên chat/CI.
+    # Skip the interactive confirmation prompt => use it when running unattended in a chat session/CI.
     [switch]$Yes
 )
 
@@ -405,7 +405,7 @@ if ($CreateRelease) {
     Write-Host ""
     Write-Host "Target GitHub repo: $Repo" -ForegroundColor Magenta
     if ($Yes) {
-        # Chạy không tương tác (agent trong phiên chat / CI): đã xác nhận ở trên trước khi gọi.
+        # Unattended run (agent in a chat session / CI): confirmed above before calling this.
         Write-Host "Auto-confirmed by -Yes (non-interactive run)." -ForegroundColor Yellow
         $confirm = "y"
     } elseif ($ReleaseOnly) {

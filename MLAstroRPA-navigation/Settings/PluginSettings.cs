@@ -10,13 +10,13 @@ using MLAstroRPA.Dockables;
 
 namespace MLAstroRPA.Settings
 {
-    /// <summary>Kiểu kết nối tới MLAstroRPA.</summary>
+    /// <summary>Connection type to MLAstroRPA.</summary>
     public enum MlastroTransportMode
     {
-        /// <summary>Kết nối qua cổng COM (USB Serial) - mặc định, giữ nguyên hành vi cũ.</summary>
+        /// <summary>Connection over a COM port (USB serial) - the default, unchanged from earlier versions.</summary>
         Serial = 0,
 
-        /// <summary>Kết nối qua WebSocket (mDNS "MLAstroRPA.local" hoặc IP).</summary>
+        /// <summary>Connection over WebSocket (mDNS "MLAstroRPA.local" or an IP).</summary>
         Wireless = 1
     }
 
@@ -95,8 +95,8 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Kiểu kết nối tới MLAstroRPA: Serial (cổng COM) hoặc Wireless (WebSocket qua mDNS/IP).
-        /// Chỉ chọn 1 trong 2 - mỗi lúc chỉ có 1 transport giữ quyền điều khiển.
+        /// Connection type to MLAstroRPA: Serial (COM port) or Wireless (WebSocket over mDNS/IP).
+        /// Pick one of the two only - a single transport holds control at a time.
         /// </summary>
         public MlastroTransportMode TransportMode
         {
@@ -120,8 +120,8 @@ namespace MLAstroRPA.Settings
         public static event EventHandler<MlastroTransportMode>? TransportModeChanged;
 
         /// <summary>
-        /// Địa chỉ thiết bị ở chế độ Wireless: hostname mDNS (mặc định "MLAstroRPA.local")
-        /// hoặc IP trực tiếp (vd "192.168.4.1") khi mDNS không hoạt động.
+        /// Device address in Wireless mode: an mDNS hostname (default "MLAstroRPA.local")
+        /// or a direct IP (e.g. "192.168.4.1") when mDNS does not resolve.
         /// </summary>
         public string MlaHost
         {
@@ -142,8 +142,8 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
-        /// Baudrate cứng của firmware MLAstroRPA (115200 8N1). Không còn cho cấu hình:
-        /// luôn trả 115200 bất kể giá trị đã lưu từ phiên trước (giữ setter no-op để tương thích binding cũ).
+        /// Fixed baud rate of the MLAstroRPA firmware (115200 8N1). No longer configurable:
+        /// it always returns 115200 whatever an earlier session stored (the setter stays a no-op so old bindings keep working).
         /// </summary>
         public int BaudRate
         {
@@ -453,8 +453,8 @@ namespace MLAstroRPA.Settings
 
         public string WifiIp
         {
-            // Giá trị này là ẢNH PHẢN CHIẾU của telemetry (STAi do router cấp qua DHCP) nên KHÔNG đặt
-            // giá trị mặc định giả: khi chưa có telemetry thì để RỖNG (UI hiện trống = chưa có IP).
+            // This value MIRRORS the telemetry (STAi as assigned by the router over DHCP), so it is NOT
+            // given a fake default: until telemetry arrives it stays EMPTY (an empty UI means no IP yet).
             get => GetString(nameof(WifiIp), string.Empty);
             set => SetString(value);
         }

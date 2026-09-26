@@ -19,16 +19,16 @@ using System.Threading.Tasks;
 namespace MLAstroRPA.Services
 {
     /// <summary>
-    /// Transport WIRELESS cho MLAstroRPA: kết nối tới thiết bị qua WebSocket
-    /// (mặc định ws://MLAstroRPA.local/ws, có thể nhập IP trực tiếp khi mDNS không hoạt động).
+    /// WIRELESS transport for MLAstroRPA: it connects to the device over a WebSocket
+    /// (default ws://MLAstroRPA.local/ws, or a direct IP when mDNS does not resolve).
     ///
-    /// Đặc điểm:
-    ///  - Dùng CÙNG endpoint /ws như Web UI, phân biệt bằng từ khóa handshake "MLAstroRPA-TC"
-    ///    (giống serial) → firmware trao quyền điều khiển + monitor cho PC và khóa điều khiển Web.
-    ///  - Telemetry JSON được chuyển ngược thành ĐÚNG định dạng text của firmware serial rồi bơm
-    ///    vào <see cref="SerialConnectionService.InjectIncomingText"/> → toàn bộ parser/UI hiện có
-    ///    (CONTROL + HARDWARE SETTING + dock TPPA) hoạt động y như khi dùng cổng COM.
-    ///  - Lệnh dạng text của firmware serial được dịch sang JSON của WebSocket API.
+    /// Highlights:
+    ///  - It uses the SAME /ws endpoint as the Web UI and identifies itself with the "MLAstroRPA-TC" handshake
+    ///    keyword (like serial) -> the firmware grants the PC control + monitor and locks the web controls.
+    ///  - JSON telemetry is turned back into the EXACT text format of the serial firmware and pushed
+    ///    into <see cref="SerialConnectionService.InjectIncomingText"/> -> every existing parser/UI
+    ///    (CONTROL + HARDWARE SETTING + the TPPA dock) behaves exactly like it does over the COM port.
+    ///  - Text commands of the serial firmware are translated into the WebSocket API JSON.
     /// </summary>
     public sealed class MlastroWebSocketService : INotifyPropertyChanged, IDisposable
     {
@@ -38,13 +38,13 @@ namespace MLAstroRPA.Services
         private static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan ConfigAckTimeout = TimeSpan.FromSeconds(8);
 
-        // Chính sách THỬ LẠI khi kết nối: chỉ thử vài lần trong 1 khoảng NGẮN (mặc định 5 s) rồi
-        // báo failed. Địa chỉ sai / mDNS không resolve mà retry vô hạn thì UI treo và người dùng
-        // không bao giờ biết kết nối đã thất bại.
+        // RETRY policy on connect: only a few attempts within a SHORT window (5 s by default), then
+        // report failure. Endless retries on a wrong address or an unresolvable mDNS name freeze the UI and the user
+        // never learns that the connection failed.
         private static readonly TimeSpan ConnectAttemptWindow = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromMilliseconds(700);
-        // Timeout cho TỪNG lần: mDNS/DNS có thể treo lâu khi hostname sai, và TCP connect tới IP
-        // sai subnet có thể treo ~20 s.
+        // Per-attempt timeout: mDNS/DNS can hang for a long time on a wrong hostname, and a TCP connect to an
+        // IP on the wrong subnet can hang for ~20 s.
         private static readonly TimeSpan ResolveTimeout = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan ConnectAttemptTimeout = TimeSpan.FromSeconds(2);
 
@@ -59,45 +59,45 @@ namespace MLAstroRPA.Services
         private TaskCompletionSource<bool>? _handshakeTcs;
         private TaskCompletionSource<string>? _configAckTcs;
         private readonly Dictionary<string, Dictionary<string, object>> _snapshotSections = new(StringComparer.OrdinalIgnoreCase);
-        // Giá trị cấu hình nằm ở CẤP CAO NHẤT của frame (không thuộc section nào) - vd thông tin STA
-        // (ssid/ip/sta_mac) vì firmware giữ tên cũ cho web UI đọc.
+        // Configuration values live at the TOP LEVEL of the frame (they belong to no section) - e.g. the STA
+        // info (ssid/ip/sta_mac), because the firmware keeps the old names for the web UI to read.
         private readonly Dictionary<string, object> _snapshotScalars = new(StringComparer.OrdinalIgnoreCase);
-        // Sai số align (d/m/s + hướng) gần nhất plugin BIẾT: dùng khi lệnh align chỉ có cờ kích hoạt
-        // (AzAN/AlAN/AAll) hoặc khi lệnh ghi chỉ gửi 1 phần trường — giống Serial (firmware dùng/giữ
-        // giá trị đã lưu trong FRAM).
+        // The latest align error (d/m/s + direction) the plugin KNOWS: used when the align command carries only the trigger flag
+        // (AzAN/AlAN/AAll) or when a write command sends only part of the fields - like Serial (the firmware uses/keeps
+        // the value stored in FRAM).
         private (int D, int M, double S, bool Dir)? _alignAzParts;
         private (int D, int M, double S, bool Dir)? _alignAltParts;
         private DateTime _lastAlignSentUtc = DateTime.MinValue;
         private bool _alignInFlight;
         private bool _sawBusySinceAlign;
         private int _speedLevelFromSnapshot = 3;
-        // Phiên bản firmware đã log lần cuối: frame `config_pushed` cũng mang `fw_ver` nên nếu không
-        // so sánh thì mỗi lần đổi cài đặt lại ghi thêm 1 dòng "Firmware: …" vào System log.
+        // Firmware version logged last: a `config_pushed` frame also carries `fw_ver`, so without the
+        // comparison every settings change would add another "Firmware: ..." line to the System log.
         private string? _firmwareVersionFromSnapshot;
 
-        // Trạng thái "chế độ" của dock (JoRe/ReDe/ReAM/ReAS chỉ có ở giao thức serial):
-        // WebSocket không có lệnh tương đương nên phải ghi nhớ để dịch đúng arrow-press
-        // thành `move` (jog liên tục) hay `moveRelative` (dịch một góc).
+        // The dock "mode" state (JoRe/ReDe/ReAM/ReAS exist only in the serial protocol):
+        // the WebSocket has no equivalent command, so it has to be remembered to translate an arrow press into
+        // `move` (continuous jog) or `moveRelative` (a single step).
         private bool _relativeMode;
         private int _relativeDegrees;
         private int _relativeMinutes;
         private int _relativeSeconds;
 
-        // Jog đang chạy: dock gửi lại lệnh mỗi 250 ms (watchdog) nhưng firmware WS từ chối
-        // mọi lệnh motion khi đang chạy → phải bỏ các lần gửi lặp để tránh spam alert.
+        // A jog is running: the dock re-sends the command every 250 ms (watchdog) but the WS firmware refuses
+        // every motion command while one runs -> the repeated sends have to be dropped to avoid alert spam.
         private string? _activeJogAxis;
         private int _activeJogDirection;
 
-        /// <summary>Singleton để controller và driver TPPA dùng CHUNG một phiên WS (firmware chỉ cho 1 PC).</summary>
+        /// <summary>Singleton so the controller and the TPPA driver SHARE one WS session (the firmware allows one PC).</summary>
         public static MlastroWebSocketService? Instance { get; private set; }
 
-        /// <summary>Mọi dòng text đã tổng hợp (telemetry / ok / AAll:COMPLETED): cho adapter ISerialLink của TPPA.</summary>
+        /// <summary>Every assembled text line (telemetry / ok / AAll:COMPLETED) for the TPPA ISerialLink adapter.</summary>
         public event Action<string>? LineReceived;
 
-        /// <summary>Trạng thái kết nối đổi (arg = IsConnected).</summary>
+        /// <summary>The connection state changed (arg = IsConnected).</summary>
         public event Action<bool>? StateChanged;
 
-        /// <summary>Nhấn STOP/E-STOP bên MLAstro (hoặc mất kết nối) → TPPA phải dừng PA.</summary>
+        /// <summary>STOP/E-STOP pressed on MLAstro (or the link dropped) -> TPPA has to stop the PA.</summary>
         public event Action<string>? StopRequested;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -107,15 +107,15 @@ namespace MLAstroRPA.Services
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _serial = serial ?? throw new ArgumentNullException(nameof(serial));
 
-            // Trở thành facade cho UI/dock: từ giờ SerialConnectionService báo trạng thái + gửi lệnh
-            // qua chính phiên WebSocket này khi người dùng chọn Wireless connection.
+            // Becomes the facade for the UI/dock: from here on SerialConnectionService reports state and sends commands
+            // through this very WebSocket session when the user picks the Wireless connection.
             _serial.WirelessProxy = this;
 
             Instance = this;
         }
 
         // ==================================================================
-        // Trạng thái
+        // State
         // ==================================================================
         private bool _isConnected;
         public bool IsConnected
@@ -155,17 +155,17 @@ namespace MLAstroRPA.Services
         }
 
         // ==================================================================
-        // ĐƯỜNG VÀO + CHẤT LƯỢNG STA (firmware báo)
-        //   LinkPath   : "AP" = PC đang join hotspot của thiết bị; "STA" = đi qua router.
-        //                Firmware tính theo remoteIP của TỪNG client ở frame handshakeResult.
-        //   StaQuality : 0 = chưa vào router, 1 = có router nhưng không internet, 2 = có internet
-        //                (field `sta_qual`, dò bằng TCP probe trong firmware).
-        //   StaIp      : IP LAN mà router cấp cho ESP32 (field `sta_ip`).
+        // ENTRY ROUTE + STA QUALITY (reported by the firmware)
+        //   LinkPath   : "AP" = the PC joined the device hotspot; "STA" = through the router.
+        //                The firmware derives it from the remoteIP of EACH client in the handshakeResult frame.
+        //   StaQuality : 0 = not joined to the router, 1 = router but no internet, 2 = internet
+        //                (`sta_qual` field, probed with TCP inside the firmware).
+        //   StaIp      : the LAN IP the router gave the ESP32 (`sta_ip` field).
         // ==================================================================
         private string _linkPath = string.Empty;
         public string LinkPath
         {
-            // Đọc qua IsConnected: rớt kết nối là tự rỗng, không cần reset ở mọi nhánh thoát.
+            // Read through IsConnected: a dropped link empties it by itself, so no reset is needed on every exit path.
             get => IsConnected ? _linkPath : string.Empty;
             private set
             {
@@ -187,8 +187,8 @@ namespace MLAstroRPA.Services
             }
         }
 
-        // AP của THIẾT BỊ (hotspot ESP32 phát ra): đã lên và có IP chưa + IP hiện tại.
-        // Dùng cho dòng "AP: Connected/Ready/Error <IP>" trên HeaderBar.
+        // Device AP (the hotspot the ESP32 publishes): whether it is up, and its current IP.
+        // Used by the "AP: Connected/Ready/Error <IP>" line in the HeaderBar.
         private bool _apReady;
         public bool ApReady
         {
@@ -201,7 +201,7 @@ namespace MLAstroRPA.Services
             }
         }
 
-        // IP AP mới nhất firmware báo (field `ap_ip`); rỗng = chưa có.
+        // Latest AP IP reported by the firmware (`ap_ip` field); empty = none yet.
         private string _apIp = string.Empty;
 
         public string ConfiguredAddress => string.IsNullOrWhiteSpace(_settings.MlaHost) ? "MLAstroRPA.local" : _settings.MlaHost;
@@ -252,29 +252,29 @@ namespace MLAstroRPA.Services
                 }
             }
 
-            // LUÔN bắn event StopRequested — đây là kênh của transport TPPA-wireless
-            // (MlastroWirelessSerial đăng ký event này, KHÔNG đăng ký external-stop listener).
-            // Trước đây hàm return sớm khi chưa có external-stop listener ⇒ STOP/E-STOP bấm trên
-            // plugin MLAstro lúc TPPA đang chạy Wireless KHÔNG tới được TPPA (không toast, không
-            // dừng routine). Bug user báo 2026-09-16 (log chỉ có dòng NotifyExternalStop).
+            // ALWAYS raise the StopRequested event - this is the channel of the TPPA-wireless transport
+            // (MlastroWirelessSerial subscribes to this event and NOT to the external-stop listener).
+            // This method used to return early when no external-stop listener existed => STOP/E-STOP pressed on the
+            // MLAstro plugin while TPPA ran Wireless never reached TPPA (no toast, no
+            // routine stop). User-reported bug 2026-09-16 (the log only had the NotifyExternalStop line).
             try { StopRequested?.Invoke(reason); } catch { }
         }
 
         public void SetExternalPauseQuery(bool pause)
         {
-            // Wireless: telemetry do firmware đẩy định kỳ, không có poll "?" → không cần pause.
+            // Wireless: the firmware pushes telemetry periodically and there is no "?" poll -> nothing to pause.
             Logger.Info($"[MLAstro][WS] SetExternalPauseQuery({pause}) ignored (fw push telemetry).");
         }
 
         // ==================================================================
-        // Kết nối / ngắt
+        // Connect / disconnect
         // ==================================================================
         public async Task<bool> ConnectAsync(CancellationToken token = default)
         {
             if (IsConnected) return true;
 
-            // Phiên mới: xoá bảng log của phiên trước (giống refresh trang Web UI) để bảng chỉ
-            // hiển thị sự kiện của lần kết nối này. Firmware cũng không replay log cũ cho PC nữa.
+            // New session: clear the table of the previous session (like refreshing the Web UI page) so it only
+            // shows the events of this connection. The firmware does not replay old logs to the PC either.
             ClearSystemLog();
 
             var host = ConfiguredAddress.Trim();
@@ -286,7 +286,7 @@ namespace MLAstroRPA.Services
             HandshakeStatus = string.Empty;
             AppendLog($"Resolving {host} ...");
 
-            // ---- Thử resolve + connect vài lần trong ConnectAttemptWindow rồi BÁO FAILED ----
+            // ---- Resolve + connect retries within ConnectAttemptWindow, then REPORT FAILED ----
             var deadline = DateTime.UtcNow + ConnectAttemptWindow;
             var isIpLiteral = IPAddress.TryParse(host, out _);
             var attempt = 0;
@@ -298,8 +298,8 @@ namespace MLAstroRPA.Services
             {
                 attempt++;
 
-                // Hết cửa sổ thử lại thì KHÔNG mở thêm lần nào nữa (nếu không, mỗi lần có thể chờ
-                // thêm ConnectAttemptTimeout → tổng thời gian vượt xa 5 s).
+                // Once the retry window is over no further attempt is made (otherwise every attempt could wait
+                // another ConnectAttemptTimeout -> the total would run far past 5 s).
                 if (attempt > 1 && DateTime.UtcNow >= deadline) break;
 
                 string? endpointHost = null;
@@ -365,7 +365,7 @@ namespace MLAstroRPA.Services
             _cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             _snapshotSections.Clear();
 
-            // Đọc init snapshot + chờ handshake
+            // Read the init snapshot + wait for the handshake
             _handshakeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _receiveLoop = Task.Run(() => ReceiveLoopAsync(socket, _cts.Token));
 
@@ -389,7 +389,7 @@ namespace MLAstroRPA.Services
             HandshakeStatus = "OK!";
             ConnectionStatus = $"Connected (wireless) - {connectedHost}";
 
-            // Phiên mới: xoá trạng thái lỗi còn sót (wireless không nhận dòng ERROR: như serial).
+            // New session: clear leftover error state (wireless never receives ERROR: lines like serial does).
             try { _serial.ResetErrorStateForNewSession(); } catch { }
 
             AppendLog($"Handshake: OK! PC has control; Web UI locked (monitoring only).");
@@ -401,8 +401,8 @@ namespace MLAstroRPA.Services
         {
             try
             {
-                // DNS/mDNS có thể treo rất lâu khi hostname sai → chặn trong ResolveTimeout rồi
-                // trả null để vòng thử lại của ConnectAsync quyết định (thay vì treo vô hạn).
+                // DNS/mDNS can hang for a very long time on a wrong hostname -> cap it with ResolveTimeout and
+                // return null so the ConnectAsync retry loop decides (instead of hanging forever).
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
                 cts.CancelAfter(ResolveTimeout);
                 var addresses = await Dns.GetHostAddressesAsync(host, cts.Token).ConfigureAwait(false);
@@ -436,7 +436,7 @@ namespace MLAstroRPA.Services
             {
                 if (IsConnected)
                 {
-                    // Nhả quyền êm để Web UI mở khóa ngay (không cần F5)
+                    // Releases control cleanly so the Web UI unlocks at once (no F5 needed)
                     try { SendJsonAsync("{\"cmd\":\"releaseControl\"}", CancellationToken.None).GetAwaiter().GetResult(); } catch { }
                     AppendLog("Release control sent. Disconnecting...");
                 }
@@ -504,11 +504,11 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Reboot thiết bị qua WebSocket — hoạt động ĐÚNG như nút REBOOT trên Web UI: gửi
-        /// <c>{"cmd":"reboot"}</c> để firmware broadcast <c>sys_status=REBOOTING</c> rồi <c>ESP.restart()</c>.
-        /// ⚠ KHÔNG gửi <c>releaseControl</c> trước đó: sau khi nhả quyền, client không còn là
-        /// PC-controller nên firmware từ chối lệnh reboot (trả "locked") ⇒ nút Reset ESP32 trên
-        /// đường Wireless im lặng không làm gì. Reboot tự xoá phiên PC ở phía thiết bị nên không cần nhả.
+        /// Reboots the device over the WebSocket - EXACTLY like the REBOOT button of the Web UI: it sends
+        /// <c>{"cmd":"reboot"}</c> so the firmware broadcasts <c>sys_status=REBOOTING</c> and then runs <c>ESP.restart()</c>.
+        /// WARNING: do NOT send <c>releaseControl</c> first - once control is released the client is no longer the
+        /// PC-controller, so the firmware refuses the reboot (it answers "locked") => the Reset ESP32 button over
+        /// Wireless did nothing silently. The reboot clears the PC session on the device itself, so releasing is not needed.
         /// </summary>
         public bool ResetEsp32()
         {
@@ -526,10 +526,10 @@ namespace MLAstroRPA.Services
             }
         }
 
-        public bool QueryTelemetry() => IsConnected; // firmware tự đẩy telemetry ~250 ms
+        public bool QueryTelemetry() => IsConnected; // the firmware pushes telemetry about every 250 ms
 
         // ==================================================================
-        // Nhận dữ liệu
+        // Incoming data
         // ==================================================================
         private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken token)
         {
@@ -571,7 +571,7 @@ namespace MLAstroRPA.Services
                 if (wasConnected)
                 {
                     AppendLog("Connection lost (wireless).");
-                    // Không còn điều khiển được thiết bị → TPPA phải dừng PA đang chạy.
+                    // The device can no longer be driven -> TPPA has to stop the running PA.
                     try { StopRequested?.Invoke("Wireless connection closed."); } catch { }
                 }
             }
@@ -591,28 +591,28 @@ namespace MLAstroRPA.Services
             {
                 var root = doc.RootElement;
 
-                // Log/alert do firmware đẩy lên
+                // Log/alert pushed by the firmware
                 if (TryGetString(root, "log", out var logMsg))
                 {
-                    AddSystemLog(logMsg); // nội dung chính của bảng System log (giống Web UI)
+                    AddSystemLog(logMsg); // the main content of the System log table (like the Web UI)
                 }
                 if (TryGetString(root, "alert", out var alert))
                 {
-                    // Web UI hiện `alert` bằng MODAL và KHÔNG ghi vào bảng System log (xem
-                    // data/script.js: showModal('System Message', data.alert) — không gọi appendLog).
-                    // Plugin giữ đúng tương đương: file NINA log (và toast, xem dưới), KHÔNG đưa vào
-                    // System log → bảng System log của plugin luôn giống hệt bảng System Log của Web UI.
+                    // The Web UI shows `alert` as a MODAL and does NOT write it to the System log (see
+                    // data/script.js: showModal('System Message', data.alert) - it never calls appendLog).
+                    // The plugin keeps the same behaviour: the NINA log file (and a toast, see below), but NOT the
+                    // System log -> so the plugin table always matches the Web UI System Log table.
                     AppendLog($"ALERT: {alert}");
 
-                    // Cảnh báo LIÊN QUAN GIỚI HẠN (soft/hard limit, align/relative bị từ chối) KHÔNG
-                    // toast nữa: firmware đã báo CÙNG một sự việc bằng mã lỗi trong ERROR telemetry
-                    // (AzSL/AlSL/AzHL/AlHL/RfJog*/RfAln*) → trước đây bấm jog vào soft-limit hiện 2 hộp
-                    // thoại ("Soft Limit Reached! AZ axis stopped at configured limit." của `alert` và
-                    // "AZ soft limit reached" của mã lỗi AzSL).
-                    // Kênh mã lỗi được chọn vì đây mới là kênh có ở MỌI môi trường điều khiển (Serial
-                    // không có `alert`) → câu chữ + số lượng thông báo giống nhau dù dùng cáp hay WS.
-                    // Nội dung `alert` chi tiết hơn (vd hướng cần nhấn để thoát hard-limit) vẫn được
-                    // ghi vào file log NINA qua AppendLog ở trên.
+                    // LIMIT-RELATED warnings (soft/hard limit, refused align/relative) do NOT
+                    // raise a toast any more: the firmware already reports the SAME event as an error code in the ERROR telemetry
+                    // (AzSL/AlSL/AzHL/AlHL/RfJog*/RfAln*) -> jogging into a soft limit used to show two dialogs
+                    // ("Soft Limit Reached! AZ axis stopped at configured limit." from `alert` and
+                    // "AZ soft limit reached" from the AzSL error code).
+                    // The error-code channel wins because it exists in EVERY control environment (Serial
+                    // has no `alert`) -> the wording and the number of notices match whether a cable or WS is used.
+                    // The more detailed `alert` text (e.g. which direction escapes a hard limit) is still
+                    // written to the NINA log file through AppendLog above.
                     if (!IsLimitAlert(alert))
                     {
                         try { Notification.ShowWarning($"MLAstro RPA: {alert}"); } catch { }
@@ -633,7 +633,7 @@ namespace MLAstroRPA.Services
                         {
                             _serial.SetWirelessFirmwareVersion(fwVer);
                         }
-                        // Đường vào (AP/STA) — firmware tính theo remoteIP của chính client này.
+                        // Entry route (AP/STA) - the firmware derives it from the remoteIP of this very client.
                         if (ok && TryGetString(root, "link", out var linkPath))
                         {
                             LinkPath = linkPath;
@@ -654,7 +654,7 @@ namespace MLAstroRPA.Services
 
                     if (cmd == "controlReleased" || cmd == "controlTakenBySerial")
                     {
-                        // Web UI làm đúng như vậy: appendLog(data.reason) — KHÔNG thêm tiền tố.
+                        // The Web UI does exactly that: appendLog(data.reason) - no prefix is added.
                         var reason = TryGetString(root, "reason", out var r3) ? r3 : cmd;
                         AddSystemLog(reason);
                         return;
@@ -667,9 +667,9 @@ namespace MLAstroRPA.Services
 
                     if (cmd == "configRead")
                     {
-                        // Trả lời của `getConfig` (đọc riêng password WiFi theo yêu cầu). Bơm vào luồng
-                        // text của firmware như thể thiết bị vừa trả lời `STAp:…` / `APpa:…` → đường
-                        // serial sẽ tự cập nhật settings + UI (giống hệt khi kết nối bằng cáp USB).
+                        // The `getConfig` answer (it reads the WiFi password on demand). It is pushed into the
+                        // firmware text stream as if the device had answered `STAp:...` / `APpa:...` -> the
+                        // serial path updates settings + UI by itself (exactly like a USB cable connection).
                         if (root.TryGetProperty("data", out var cd) && cd.ValueKind == JsonValueKind.Object)
                         {
                             if (TryGetString(cd, "pass", out var staPw))
@@ -686,7 +686,7 @@ namespace MLAstroRPA.Services
                     }
                 }
 
-                // 2) Ack của config
+                // 2) Config ack
                 if (TryGetString(root, "status", out var status))
                 {
                     if (status == "configSaved" || status == "configApplied")
@@ -696,17 +696,17 @@ namespace MLAstroRPA.Services
                     }
                 }
 
-                // 3) Snapshot cấu hình: frame đầu tiên sau khi kết nối VÀ mọi frame `config_pushed`
-                //    (firmware push lại khi cấu hình đổi từ bất kỳ đường nào) → luôn cache lại.
-                //    ⚠ Nhánh này CŨNG bắt các frame chỉ chứa MỘT setting (vd `{"speedLevel":2}` khi đổi
-                //    tốc độ, hay `handshakeResult` có `fw_ver`) vì firmware gửi delta cho từng setting.
-                //    Vì vậy mọi hàm con ở đây BẮT BUỘC theo nguyên tắc "chỉ ghi khi field CÓ MẶT":
-                //    thiếu field KHÔNG có nghĩa là thiết bị báo rỗng.
-                //    (Password WiFi KHÔNG nằm trong snapshot — đọc riêng bằng lệnh `getConfig`.)
+                // 3) Configuration snapshot: the first frame after connecting AND every `config_pushed` frame
+                //    (the firmware pushes again when the configuration changes from any route) -> always cached.
+                //    NOTE: this branch ALSO catches frames carrying a SINGLE setting (e.g. `{"speedLevel":2}` when the
+                //    speed changes, or `handshakeResult` with `fw_ver`) because the firmware sends per-setting deltas.
+                //    Every helper here therefore follows the rule "only write when the field is PRESENT":
+                //    a missing field does NOT mean the device reported it empty.
+                //    (The WiFi password is NOT part of the snapshot - it is read with the `getConfig` command.)
                 if (TryGetInt(root, "speedLevel", out _) || TryGetString(root, "fw_ver", out _))
                 {
                     CacheSnapshotSections(root);
-                    ApplyRelativeState(root); // Jog/Relative đang lưu trên device là nguồn sự thật
+                    ApplyRelativeState(root); // the Jog/Relative state stored on the device is the source of truth
                     if (TryGetString(root, "fw_ver", out var fw) && fw != _firmwareVersionFromSnapshot)
                     {
                         _firmwareVersionFromSnapshot = fw;
@@ -720,46 +720,46 @@ namespace MLAstroRPA.Services
                     return;
                 }
 
-                // 3b) Firmware broadcast trạng thái Relative ({"relative":{...}}) - phát ra khi
-                //     BẤT KỲ client nào (Web hoặc PC plugin) đổi chế độ/tham số Relative.
-                //     Ghi lại để telemetry (JoRe/ReDe/ReAM/ReAS) + dock luôn khớp với backend.
+                // 3b) The firmware broadcasts the Relative state ({"relative":{...}}) - it is emitted when
+                //     ANY client (web or PC plugin) changes the Relative mode/parameters.
+                //     Recorded so telemetry (JoRe/ReDe/ReAM/ReAS) + the dock always match the backend.
                 if (ApplyRelativeState(root))
                 {
                     return;
                 }
 
-                // 4) Trạng thái mã lỗi do firmware gửi qua WebSocket (edge-triggered, giống dòng
-                //    "ERROR:..." của Serial). Không có nhánh này thì bảng Alarm History trống trơn
-                //    vì đường Serial không được dùng khi kết nối Wireless.
+                // 4) Error-code state sent by the firmware over the WebSocket (edge-triggered, like the
+                //    Serial "ERROR:..." lines). Without this branch the Alarm History table stays empty
+                //    because the serial route is not used while connected over Wireless.
                 if (TryGetString(root, "error", out var errorLine) && !string.IsNullOrWhiteSpace(errorLine))
                 {
                     var line = errorLine.StartsWith("ERROR:", StringComparison.Ordinal) ? errorLine : "ERROR:" + errorLine;
-                    // CHỈ nạp vào bảng Alarm History + file NINA log. Web UI cũng KHÔNG ghi dòng lỗi vào
-                    // System log (chỉ modal), nên đứng thêm dòng tổng hợp vào đây để hai bảng log giống nhau.
+                    // It only feeds the Alarm History table + the NINA log file. The Web UI does not write error lines to the
+                    // System log either (modal only), so no extra summary line is added here to keep both log tables identical.
                     AppendLog(line);
                     _serial.InjectIncomingText(line);   // -> ProcessErrorTelemetry -> Alarm History
                     return;
                 }
 
-                // 5) Telemetry định kỳ: KHÔNG ghi vào System log (250 ms/lần sẽ làm ngập log),
-                //    chỉ chuyển thành telemetry text cho pipeline UI + driver TPPA.
-                //    Chỉ coi là telemetry khi có trường vị trí (các frame chỉ có sys_status như
-                //    STOPPED/REBOOTING không được phép ghi đè vị trí hiển thị).
+                // 5) Periodic telemetry: NOT written to the System log (every 250 ms would flood it),
+                //    it is only turned into telemetry text for the UI pipeline + the TPPA driver.
+                //    Something counts as telemetry only when a position field is present (frames with just sys_status such as
+                //    STOPPED/REBOOTING must not overwrite the displayed position).
                 if (root.TryGetProperty("pos_az", out _))
                 {
                     var line = BuildSerialTelemetryLine(root);
                     if (!string.IsNullOrEmpty(line))
                     {
-                        // Cho adapter ISerialLink của TPPA (ReadLine/ReadExisting)
+                        // For the TPPA ISerialLink adapter (ReadLine/ReadExisting)
                         try { LineReceived?.Invoke(line); } catch { }
 
-                        // Cho pipeline UI dùng chung với serial (TelemetryParser + dock)
+                        // For the UI pipeline shared with serial (TelemetryParser + dock)
                         _serial.InjectIncomingText(line + "\n");
 
-                        // Chuyển tiếp sự kiện hoàn tất align cho controller UI + driver TPPA.
-                        // Chỉ coi là xong khi: firmware báo ALIGN_COMPLETED, HOẶC READY mà trước đó
-                        // đã thấy trạng thái đang chạy (tránh READY thoáng qua ngay sau khi gửi lệnh),
-                        // HOẶC READY sau 1.5 s (các bước dịch rất nhỏ không có pha ALIGNING).
+                        // Forwards the align-completed event to the controller UI + the TPPA driver.
+                        // It counts as done only when: the firmware reports ALIGN_COMPLETED, OR READY after a
+                        // running state was seen first (this avoids a momentary READY right after the command),
+                        // OR READY after 1.5 s (very small steps have no ALIGNING phase).
                         if (TryGetString(root, "sys_status", out var sysStatus))
                         {
                             var busy = sysStatus == "ALIGNING" || sysStatus == "MOVING" || sysStatus == "HOMING" || sysStatus == "CALIBRATING";
@@ -785,14 +785,14 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Section cấu hình của frame snapshot/broadcast được cache để TỔNG HỢP TELEMETRY và để tra cứu
-        /// khi dịch lệnh. PHẢI khớp với fillConfigSections() bên firmware; thêm cài đặt mới ở firmware
-        /// thì thêm tên section ở đây (+ token tương ứng trong AppendSnapshotTokens).
+        /// Configuration sections of the snapshot/broadcast frames are cached to BUILD TELEMETRY and to look up
+        /// values when translating commands. MUST match fillConfigSections() in the firmware; a new firmware setting
+        /// means adding its section name here (+ the matching token in AppendSnapshotTokens).
         /// </summary>
         private static readonly string[] SnapshotSectionNames =
             { "limits", "motor", "backlash", "wifi_ap", "serial", "align", "align_mode" };
 
-        /// <summary>Giá trị cấp cao nhất của frame snapshot cần cho telemetry text (thông tin STA).</summary>
+        /// <summary>Top-level values of the snapshot frame needed for the telemetry text (STA info).</summary>
         private static readonly string[] SnapshotScalarNames = { "ssid", "ip", "sta_mac", "pass" };
 
         private void CacheSnapshotSections(JsonElement root)
@@ -816,7 +816,7 @@ namespace MLAstroRPA.Services
                 _snapshotScalars[name] = ToPlainValue(scalar);
             }
 
-            // Sai số align đang LƯU trong thiết bị là nguồn sự thật (dùng khi lệnh align không kèm giá trị).
+            // The align error STORED on the device is the source of truth (used when an align command carries no value).
             if (_snapshotSections.TryGetValue("align", out var alignSnap))
             {
                 _alignAzParts = AlignPartsFromSection(alignSnap, "az");
@@ -824,7 +824,7 @@ namespace MLAstroRPA.Services
             }
         }
 
-        /// <summary>Làm phẳng một object JSON thành "key" hoặc "cha.con" để tra cứu đơn giản.</summary>
+        /// <summary>Flattens a JSON object into "key" or "parent.child" for simple lookups.</summary>
         private static void FlattenJson(JsonElement obj, string prefix, Dictionary<string, object> into)
         {
             foreach (var prop in obj.EnumerateObject())
@@ -850,23 +850,23 @@ namespace MLAstroRPA.Services
             _ => string.Empty
         };
 
-        /// <summary>Sai số align (d/m/s + hướng) từ section "align" đã cache: {az:{d,m,s,dir}}.</summary>
+        /// <summary>The align error (d/m/s + direction) from the cached "align" section: {az:{d,m,s,dir}}.</summary>
         private static (int D, int M, double S, bool Dir)? AlignPartsFromSection(Dictionary<string, object> align, string axis)
         {
             if (!align.ContainsKey(axis + ".d") && !align.ContainsKey(axis + ".s")) return null;
             var d = ParseDecimal(Get(align, axis + ".d"));
             var m = ParseDecimal(Get(align, axis + ".m"));
             var s = ParseDecimal(Get(align, axis + ".s"));
-            // PHẢI dùng GetFlag(): `dir` trong JSON là bool, mà Convert.ToString(false) = "False" nên
-            // cách so sánh kiểu `Get(...) != "0"` sẽ đọc cờ false thành TRUE → hướng align luôn là
-            // "Right/Up" và người dùng không thể đảo chiều bằng nút toggle trên PC client.
+            // GetFlag() MUST be used: `dir` is a bool in JSON and Convert.ToString(false) = "False", so
+            // a string comparison like `Get(...) != "0"` reads a false flag as TRUE -> the align direction would always be
+            // "Right/Up" and the user could not reverse it with the toggle on the PC client.
             var dir = GetFlag(align, axis + ".dir");
             return ((int)d, (int)m, s, dir);
         }
 
         /// <summary>
-        /// Đọc một cờ trong dict đã cache (JSON bool / số 0-1 / chuỗi "1"|"true") thành bool.
-        /// Dùng cho MỌI trường kiểu cờ — không so sánh chuỗi với "0" vì bool→string là "True"/"False".
+        /// Reads a flag from the cached dict (JSON bool / number 0-1 / string "1"|"true") as a bool.
+        /// Used for EVERY flag-like field - never compare strings with "0" because bool->string is "True"/"False".
         /// </summary>
         private static bool GetFlag(Dictionary<string, object> d, string key)
         {
@@ -889,7 +889,7 @@ namespace MLAstroRPA.Services
                 ? Convert.ToString(v, CultureInfo.InvariantCulture) ?? string.Empty
                 : string.Empty;
 
-        /// <summary>Tổng hợp telemetry JSON thành đúng định dạng text của firmware serial.</summary>
+        /// <summary>Assembles JSON telemetry into the exact text format of the serial firmware.</summary>
         private string BuildSerialTelemetryLine(JsonElement root)
         {
             var status = TryGetString(root, "sys_status", out var s) ? s : "READY";
@@ -897,28 +897,28 @@ namespace MLAstroRPA.Services
             var movedAlt = TryGetDouble(root, "align_moved_alt", out var alt) ? alt : 0;
 
             var tokens = new List<string>();
-            // Scal:1 = hệ số scale của khung telemetry đầy đủ (giống firmware serial).
+            // Scal:1 = the scale factor of the full telemetry frame (same as the serial firmware).
             AddToken(tokens, "Scal", "1");
             AddToken(tokens, "SLvl", _speedLevelFromSnapshot.ToString(CultureInfo.InvariantCulture));
             AddToken(tokens, "WSta", TryGetDouble(root, "rssi", out var rssi) && rssi > -1000 ? "1" : "0");
 
-            // Chất lượng đường STA + IP LAN của thiết bị (firmware ≥ 1.7.0). Đẩy tiếp thành token
-            // WQu / STAi để dock dùng CHUNG một đường parse với khi cắm cáp Serial.
-            // Firmware cũ (< 1.7.0) không gửi `sta_qual` → suy ra mức tối thiểu từ RSSI (đang vào
-            // router ⇒ 1) để dòng STA không hiện sai thành "none".
+            // STA quality + the LAN IP of the device (firmware 1.7.0+). They are forwarded as the
+            // WQu / STAi tokens so the dock parses them through the SAME path as a Serial cable.
+            // Older firmware (< 1.7.0) sends no `sta_qual` -> the minimum level is derived from RSSI (joined to the
+            // router => 1) so the STA line does not wrongly show "none".
             StaQuality = TryGetInt(root, "sta_qual", out var staQual)
                 ? staQual
                 : (rssi > -1000 ? 1 : 0);
             if (TryGetString(root, "sta_ip", out var staIp) && !string.IsNullOrWhiteSpace(staIp))
             {
-                // Ghi vào snapshot scalar "ip" ⇒ AppendSnapshotTokens phát token STAi với IP MỚI NHẤT
-                // (IP trong snapshot có thể cũ nếu DHCP cấp địa chỉ khác mà cấu hình không đổi).
+                // Written into the snapshot "ip" scalar => AppendSnapshotTokens emits the STAi token with the NEWEST IP
+                // (the snapshot IP can be stale when DHCP hands out a different address while the config stays the same).
                 _snapshotScalars["ip"] = staIp;
             }
             AddToken(tokens, "WQu", StaQuality.ToString(CultureInfo.InvariantCulture));
 
-            // AP của thiết bị: đã lên/có IP chưa (token APrd) + IP AP (token APip, xem
-            // AppendSnapshotTokens — IP live được ưu tiên hơn giá trị trong snapshot cấu hình).
+            // Device AP: up/has an IP (APrd token) + the AP IP (APip token, see
+            // AppendSnapshotTokens - a live IP wins over the value in the configuration snapshot).
             if (TryGetBool(root, "ap_ready", out var apReady))
             {
                 ApReady = apReady;
@@ -935,9 +935,9 @@ namespace MLAstroRPA.Services
             if (TryGetDouble(root, "pos_alt", out var posAlt))
                 AddToken(tokens, "AlPH", posAlt.ToString("0.#####", CultureInfo.InvariantCulture));
 
-            // Chế độ dịch chuyển tương đối: giao thức Serial có JoRe/ReDe/ReAM/ReAS là TRẠNG THÁI,
-            // còn WebSocket không có lệnh tương đương nên plugin tự ghi nhớ. Phải đưa vào telemetry,
-            // nếu không dock sẽ nhận IsRelativeMode = false sau mỗi gói (toggle tự tắt ngay khi bật).
+            // Relative move mode: in the Serial protocol JoRe/ReDe/ReAM/ReAS are STATE,
+            // while the WebSocket has no equivalent command, so the plugin remembers them itself. They must reach telemetry,
+            // otherwise the dock gets IsRelativeMode = false after every packet (the toggle turns itself off right away).
             AddToken(tokens, "JoRe", _relativeMode ? "1" : "0");
             AddToken(tokens, "ReDe", _relativeDegrees.ToString(CultureInfo.InvariantCulture));
             AddToken(tokens, "ReAM", _relativeMinutes.ToString(CultureInfo.InvariantCulture));
@@ -950,8 +950,8 @@ namespace MLAstroRPA.Services
 
         private void AppendSnapshotTokens(List<string> tokens)
         {
-            // Định dạng số ở đây PHẢI khớp snprintf() của firmware (AzL1:%.1f, AzSD:%.5f,
-            // AzED:%.0f, AzES:%.2f...) để dock/driver TPPA nhận đúng kiểu dữ liệu như khi dùng cáp Serial.
+            // The number format here MUST match the firmware snprintf() (AzL1:%.1f, AzSD:%.5f,
+            // AzED:%.0f, AzES:%.2f...) so the dock/TPPA driver gets the same data types as over a Serial cable.
             if (_snapshotSections.TryGetValue("limits", out var limits))
             {
                 AddToken(tokens, "AzL1", Format(limits, "az_min", "0.#"));
@@ -1001,19 +1001,19 @@ namespace MLAstroRPA.Services
             {
                 AddToken(tokens, "APss", Get(ap, "ssid"));
                 AddToken(tokens, "APma", Get(ap, "mac"));
-                // IP AP: ưu tiên `ap_ip` LIVE (firmware ≥ 1.7.0); snapshot chỉ là cấu hình đã lưu nên
-                // có thể khác thực tế khi AP lên bằng giá trị fallback.
+                // AP IP: prefer the LIVE `ap_ip` (firmware 1.7.0+); the snapshot is only the saved configuration, so it
+                // can differ from reality when the AP comes up with a fallback value.
                 AddToken(tokens, "APip", string.IsNullOrWhiteSpace(_apIp) ? Get(ap, "ip") : _apIp);
                 AddToken(tokens, "APsu", Get(ap, "subnet"));
             }
 
-            // Thông tin STA nằm ở CẤP CAO NHẤT của frame (firmware giữ tên cũ ip/ssid cho web UI).
+            // The STA info sits at the TOP LEVEL of the frame (the firmware keeps the old ip/ssid names for the web UI).
             AddToken(tokens, "STAs", GetScalar("ssid"));
             AddToken(tokens, "STAm", GetScalar("sta_mac"));
             AddToken(tokens, "STAi", GetScalar("ip"));
 
-            // Sai số align đang LƯU trong thiết bị (AzED/AzEM/AzES/AzDi + Al...). Không có thì các ô
-            // nhập sai số trên dock/driver TPPA sẽ trắng sau mỗi gói telemetry.
+            // The align error STORED on the device (AzED/AzEM/AzES/AzDi + Al...). Without it the error
+            // input boxes on the dock/TPPA driver would go blank after every telemetry packet.
             if (_snapshotSections.TryGetValue("align", out var align))
             {
                 AddToken(tokens, "AzED", Format(align, "az.d", "0"));
@@ -1028,8 +1028,8 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Định dạng giá trị trong dict theo mẫu số của firmware ("0.#" = %.1f, "0.#####" = %.5f,
-        /// "1" = cờ 0/1). Giá trị không phải số (ssid/ip/mac) giữ nguyên.
+        /// Formats dict values with the firmware number patterns ("0.#" = %.1f, "0.#####" = %.5f,
+        /// "1" = a 0/1 flag). Non-numeric values (ssid/ip/mac) are kept as they are.
         /// </summary>
         private static string Format(Dictionary<string, object> d, string key, string format)
         {
@@ -1052,7 +1052,7 @@ namespace MLAstroRPA.Services
         }
 
         // ==================================================================
-        // Gửi lệnh (text protocol của firmware -> JSON WebSocket API)
+        // Sending commands (firmware text protocol -> WebSocket API JSON)
         // ==================================================================
         public bool Send(string line)
         {
@@ -1071,7 +1071,7 @@ namespace MLAstroRPA.Services
                 var outgoing = Translate(tokens);
                 if (outgoing.Count == 0)
                 {
-                    // Lệnh không cần gửi (vd "?" vì telemetry do firmware đẩy)
+                    // Commands that need no send (e.g. "?" because the firmware pushes telemetry)
                     return true;
                 }
 
@@ -1090,9 +1090,9 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Đẩy chế độ/tham số Relative XUỐNG firmware, đúng như Web UI làm
-        /// (saveRelativeSettings() → saveConfig). Nhờ vậy backend là nguồn sự thật duy nhất:
-        /// firmware ghi FRAM rồi broadcast {"relative":{...}} cho MỌI client (Web + PC).
+        /// Pushes the Relative mode/parameters DOWN to the firmware, exactly like the Web UI does
+        /// (saveRelativeSettings() -> saveConfig). That keeps the backend the single source of truth:
+        /// the firmware writes FRAM and broadcasts {"relative":{...}} to EVERY client (web + PC).
         /// </summary>
         private void PushRelativeSettings()
         {
@@ -1102,7 +1102,7 @@ namespace MLAstroRPA.Services
             {
                 var payload = new
                 {
-                    origin = "pcPlugin", // để ack configSaved không bị hiểu là ack của lượt web-save
+                    origin = "pcPlugin", // so a configSaved ack is not taken for the ack of a web save
                     relative = new
                     {
                         mode = _relativeMode,
@@ -1123,8 +1123,8 @@ namespace MLAstroRPA.Services
         }
 
         /// <summary>
-        /// Đọc trạng thái Relative NGƯỢC từ backend (broadcast {"relative":{...}} hoặc init
-        /// snapshot). Nhờ vậy plugin không bao giờ lệch với firmware/Web client.
+        /// Reads the Relative state BACK from the backend (the {"relative":{...}} broadcast or the init
+        /// snapshot). That way the plugin never drifts apart from the firmware/Web client.
         /// </summary>
         private bool ApplyRelativeState(JsonElement container)
         {
@@ -1179,10 +1179,10 @@ namespace MLAstroRPA.Services
 
             var command = hasSaveAndReboot ? "saveConfig" : "applyConfig";
 
-            // WiFi (STA) / WiFi (AP) chỉ ghi được vào FRAM bằng saveConfig, và firmware sẽ TỰ REBOOT
-            // ngay sau khi lưu nếu không có no_reboot → client không bao giờ nhận được ack configSaved.
-            // Vì vậy luôn gửi kèm no_reboot:true rồi tự gửi lệnh reboot sau khi đã xác nhận (giống
-            // cách web UI làm), tránh reboot khi chưa chắc đã lưu xong.
+            // WiFi (STA) / WiFi (AP) can only reach FRAM through saveConfig, and the firmware REBOOTS by itself
+            // right after the save unless no_reboot is set -> the client would never get the configSaved ack.
+            // So no_reboot:true is always sent and the reboot command follows once the save is confirmed (like
+            // the web UI does), which avoids a reboot before the save is certain.
             if (command == "saveConfig" && payload.Keys.Any(IsSaveOnlySection))
             {
                 payload["no_reboot"] = true;
@@ -1205,7 +1205,7 @@ namespace MLAstroRPA.Services
 
             if (hasSaveAndReboot)
             {
-                // Firmware không tự reboot khi lưu config qua WS → gửi reboot như giao thức serial.
+                // The firmware does not reboot itself when the config is saved over WS -> send reboot like the serial protocol.
                 await SendJsonAsync("{\"cmd\":\"reboot\"}", CancellationToken.None).ConfigureAwait(false);
                 AppendLog("Reboot command sent after save.");
             }
@@ -1248,9 +1248,9 @@ namespace MLAstroRPA.Services
             ["OvM"] = ("backlash", "overshoot_m", false),
             ["OvS"] = ("backlash", "overshoot_s", false),
 
-            // WiFi (AP) & WiFi (STA): firmware nhận 2 nhóm này trong saveConfig (ghi FRAM + reboot),
-            // tương đương các lệnh APss/APpa/APip/APsu/STAs/STAp của giao thức Serial.
-            // TRƯỚC ĐÂY bị bỏ qua → đổi WiFi/AP bằng Wireless không có tác dụng.
+            // WiFi (AP) & WiFi (STA): the firmware takes these two groups in saveConfig (FRAM write + reboot),
+            // the equivalent of the APss/APpa/APip/APsu/STAs/STAp commands of the Serial protocol.
+            // They used to be ignored -> changing WiFi/AP over Wireless had no effect.
             ["APss"] = ("wifi_ap", "ssid", false),
             ["APpa"] = ("wifi_ap", "pass", false),
             ["APip"] = ("wifi_ap", "ip", false),
@@ -1259,7 +1259,7 @@ namespace MLAstroRPA.Services
             ["STAp"] = ("wifi", "pass", false),
         };
 
-        /// <summary>Nhóm cấu hình chỉ áp dụng được khi LƯU (saveConfig) — WiFi/AP.</summary>
+        /// <summary>Configuration groups that only apply when SAVING (saveConfig) - WiFi/AP.</summary>
         private static bool IsSaveOnlySection(string section)
             => section.Equals("wifi", StringComparison.OrdinalIgnoreCase)
                || section.Equals("wifi_ap", StringComparison.OrdinalIgnoreCase);
@@ -1310,10 +1310,10 @@ namespace MLAstroRPA.Services
             var outgoing = new List<string>();
             if (tokens.Count == 0) return outgoing;
 
-            // Telemetry query: firmware tự đẩy, không cần gửi
+            // Telemetry query: the firmware pushes it, nothing to send
             if (tokens.Count == 1 && tokens.ContainsKey("?")) return outgoing;
 
-            // Handshake text của serial: transport WS đã handshake khi kết nối
+            // Serial handshake text: the WS transport already handshook on connect
             if (tokens.ContainsKey("[MLAstroRPA-TC]")) return outgoing;
 
             if (tokens.TryGetValue("Disconnect", out _))
@@ -1322,9 +1322,9 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // `reboot` (giao thức text) → `{"cmd":"reboot"}`, giống hệt nút REBOOT trên Web UI.
-            // Trước đây token này KHÔNG được map nên bị nuốt ⇒ nút Reset ESP32 trên đường Wireless
-            // không reboot được thiết bị (chỉ đường Serial dùng xung RST mới chạy).
+            // `reboot` (text protocol) -> `{"cmd":"reboot"}`, exactly like the REBOOT button of the Web UI.
+            // This token used to be unmapped and swallowed => the Reset ESP32 button over Wireless
+            // could not reboot the device (only the Serial route with an RST pulse worked).
             if (tokens.ContainsKey("reboot"))
             {
                 outgoing.Add("{\"cmd\":\"reboot\"}");
@@ -1333,10 +1333,10 @@ namespace MLAstroRPA.Services
 
             if (tokens.ContainsKey("Save&Reboot"))
             {
-                return outgoing; // xử lý ở SendCommandAndAwaitOkAsync
+                return outgoing; // handled in SendCommandAndAwaitOkAsync
             }
 
-            // STOP:0 / ESTOP:0 = sự kiện nhả nút → firmware serial bỏ qua, WS cũng vậy.
+            // STOP:0 / ESTOP:0 are button-release events -> the serial firmware ignores them, and so does WS.
             if (tokens.TryGetValue("ESTOP", out var estopState) && estopState == "0") return outgoing;
             if (tokens.TryGetValue("STOP", out var stopState) && stopState == "0") return outgoing;
 
@@ -1375,11 +1375,11 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // ---- Chế độ / tham số dịch chuyển tương đối (chỉ có ở giao thức serial) ----
-            // Ghi nhớ NỘI BỘ **và** đẩy xuống firmware bằng saveConfig (giống hệt Web UI trong
-            // saveRelativeSettings()). Trước đây chỉ nhớ nội bộ nên backend vẫn ở chế độ Jog,
-            // Web client (đang monitor) không hề biết → vẫn hiển thị Jog dù PC đã bật Relative.
-            // Sau khi đẩy xuống, firmware broadcast {"relative":{...}} → mọi client đồng bộ.
+            // ---- Relative move mode / parameters (serial protocol only) ----
+            // Remembered INTERNALLY **and** pushed to the firmware with saveConfig (exactly like the Web UI in
+            // saveRelativeSettings()). It used to be remembered internally only, so the backend stayed in Jog mode and
+            // the monitoring web client never knew -> it kept showing Jog although the PC had switched to Relative.
+            // Once pushed, the firmware broadcasts {"relative":{...}} -> every client syncs.
             if (tokens.TryGetValue("JoRe", out var joRe))
             {
                 _relativeMode = joRe != "0";
@@ -1405,16 +1405,16 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // ---- Nút mũi tên: jog liên tục (move) hoặc dịch một góc (moveRelative) ----
+            // ---- Arrow buttons: continuous jog (move) or a single step (moveRelative) ----
             if (tokens.TryGetValue("MAzL", out var azL)) return HandleArrow("az", -1, azL);
             if (tokens.TryGetValue("MAzR", out var azR)) return HandleArrow("az", 1, azR);
             if (tokens.TryGetValue("MAlU", out var alU)) return HandleArrow("alt", 1, alU);
             if (tokens.TryGetValue("MAlD", out var alD)) return HandleArrow("alt", -1, alD);
 
-            // ---- Truy vấn password WiFi: gửi `getConfig` để ĐỌC TỪ THIẾT BỊ (giống `STAp:?` /
-            //      `APpa:?` bên Serial). Password KHÔNG nằm trong snapshot/broadcast nên không thể trả
-            //      lời từ cache — câu trả lời `configRead` sẽ được bơm ngược vào luồng text của firmware
-            //      (xem nhánh xử lý `configRead` trong HandleMessage) nên UI nhận được giá trị thật.
+            // ---- WiFi password query: send `getConfig` to READ FROM THE DEVICE (like `STAp:?` /
+            //      `APpa:?` on Serial). The password is NOT in the snapshot/broadcast, so it cannot be answered
+            //      from cache - the `configRead` answer is pushed back into the firmware text stream
+            //      (see the `configRead` branch in HandleMessage) so the UI gets the real value.
             if (tokens.TryGetValue("APpa", out var apPassQuery) && apPassQuery == "?")
             {
                 outgoing.Add("{\"cmd\":\"getConfig\",\"data\":{\"keys\":[\"wifi_ap\"]}}");
@@ -1427,12 +1427,12 @@ namespace MLAstroRPA.Services
             }
 
             // ---- ALIGN ----
-            // Giao thức Serial tách làm 2 việc khác hẳn nhau:
-            //   (a) AzED/AzEM/AzES/AzDi (+ Al...) = GHI giá trị sai số vào FRAM, KHÔNG chạy motor.
-            //       Dock gửi dòng này mỗi khi người dùng sửa ô nhập sai số.
-            //   (b) AzAN:1 / AlAN:1 / AAll:1    = KÍCH HOẠT dịch chuyển theo giá trị đã ghi.
-            // WebSocket tương đương: (a) saveConfig{align:{...}}  (b) align{ra_error,dec_error,simultaneous}.
-            // Trước đây gộp cả hai thành lệnh `align` → chỉ gõ số vào ô sai số cũng làm mount quay.
+            // The Serial protocol splits this into two clearly different jobs:
+            //   (a) AzED/AzEM/AzES/AzDi (+ Al...) = WRITE the error value to FRAM, no motor moves.
+            //       The dock sends this line whenever the user edits an error box.
+            //   (b) AzAN:1 / AlAN:1 / AAll:1    = TRIGGER a move using the stored value.
+            // WebSocket equivalents: (a) saveConfig{align:{...}}  (b) align{ra_error,dec_error,simultaneous}.
+            // Both used to be merged into one `align` command -> typing a number into an error box already moved the mount.
             var setterAz = AlignAzSetterKeys.Any(tokens.ContainsKey);
             var setterAlt = AlignAltSetterKeys.Any(tokens.ContainsKey);
             var triggerAz = tokens.ContainsKey("AAll") || tokens.ContainsKey("AzAN");
@@ -1440,9 +1440,9 @@ namespace MLAstroRPA.Services
 
             if (setterAz || setterAlt || triggerAz || triggerAlt)
             {
-                // Sai số của TỪNG trục = token vừa gửi (nếu có) + giá trị còn lại đang lưu trong thiết bị.
-                // Giao thức Serial ghi từng trường riêng lẻ (AzED/AzEM/AzES/AzDi đều ghi FRAM ngay) nên
-                // gửi thiếu trường nào thì trường đó phải giữ nguyên, không được xoá về 0.
+                // The error of EACH axis = the token just sent (if any) + the value still stored on the device.
+                // The Serial protocol writes each field on its own (AzED/AzEM/AzES/AzDi all write FRAM immediately), so
+                // a field missing from the command has to keep its value and must not be cleared to 0.
                 var az = MergeAlignParts(tokens, "Az", _alignAzParts);
                 var alt = MergeAlignParts(tokens, "Al", _alignAltParts);
                 _alignAzParts = az;
@@ -1464,8 +1464,8 @@ namespace MLAstroRPA.Services
 
                 if (triggerAz || triggerAlt)
                 {
-                    // Trục không được kích hoạt thì gửi 0 để firmware không đụng tới trục đó
-                    // (đúng như Serial: AzAN chỉ chạy AZ, AlAN chỉ chạy ALT).
+                    // An axis that is not triggered is sent as 0 so the firmware leaves that axis alone
+                    // (exactly like Serial: AzAN moves AZ only, AlAN moves ALT only).
                     var azArcSec = triggerAz ? AlignArcSeconds(az) : 0;
                     var altArcSec = triggerAlt ? AlignArcSeconds(alt) : 0;
                     var simultaneous = tokens.ContainsKey("AAll") || (triggerAz && triggerAlt);
@@ -1480,8 +1480,8 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // ApplyConf (Serial: nạp cấu hình đang có trong RAM vào phần cứng) → WebSocket không có lệnh
-            // "apply tất cả", nên gửi applyConfig với TOÀN BỘ cài đặt hiện tại của plugin.
+            // ApplyConf (Serial: load the configuration held in RAM into the hardware) -> the WebSocket has no
+            // "apply everything" command, so applyConfig is sent with ALL current settings of the plugin.
             if (tokens.ContainsKey("ApplyConf"))
             {
                 var fullPayload = BuildConfigPayload(ParseCommandLine(
@@ -1493,9 +1493,9 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // Cấu hình: gửi thẳng applyConfig (không chờ ack ở đường Send đồng bộ).
-            // Lưu ý: nhóm WiFi/AP đi qua đây sẽ bị firmware bỏ qua kèm cảnh báo
-            // "[SAVE&REBOOT required]" — đúng như hành vi của web UI khi bấm APPLY.
+            // Configuration: applyConfig is sent straight away (no ack wait on the synchronous Send path).
+            // Note: WiFi/AP groups passing through here are ignored by the firmware with the warning
+            // "[SAVE&REBOOT required]" - exactly what the web UI does when APPLY is pressed.
             if (tokens.Keys.Any(k => ConfigKeyMap.ContainsKey(k)))
             {
                 var payload = BuildConfigPayload(tokens);
@@ -1506,9 +1506,9 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // Lệnh chỉ-đọc hoặc không có tương đương ở WebSocket: firmware Serial cũng bỏ qua
-            // (Home là read-only, STAi bị bỏ qua, APma/STAm/Scal/WSta/AzPH/AlPH chỉ là telemetry)
-            // → không gửi gì và KHÔNG báo lỗi để tránh nhiễu log.
+            // Read-only commands or commands with no WebSocket equivalent: the serial firmware ignores them too
+            // (Home is read-only, STAi is ignored, APma/STAm/Scal/WSta/AzPH/AlPH are telemetry only)
+            // -> nothing is sent and NO error is reported, to keep the log clean.
             if (tokens.Keys.All(k => ReadOnlyTelemetryKeys.Contains(k)))
             {
                 return outgoing;
@@ -1521,13 +1521,13 @@ namespace MLAstroRPA.Services
         private static readonly string[] AlignAzSetterKeys = { "AzED", "AzEM", "AzES", "AzDi" };
         private static readonly string[] AlignAltSetterKeys = { "AlED", "AlEM", "AlES", "AlDi" };
 
-        /// <summary>Từ/khoá chỉ có ở telemetry (hoặc bị firmware bỏ qua) — không cần dịch, không báo lỗi.</summary>
+        /// <summary>Tokens that only exist in telemetry (or are ignored by the firmware) - nothing to translate, no error reported.</summary>
         private static readonly HashSet<string> ReadOnlyTelemetryKeys = new(StringComparer.OrdinalIgnoreCase)
         {
             "Home", "STAi", "APma", "STAm", "Scal", "WSta", "AzPH", "AlPH", "Mpos"
         };
 
-        /// <summary>Tách sai số align (arcsec, có dấu) thành d/m/s + dir đúng như giao thức Serial.</summary>
+        /// <summary>Splits a signed align error (arcsec) into d/m/s + dir exactly like the Serial protocol.</summary>
         private static (int D, int M, double S, bool Dir) MergeAlignParts(
             Dictionary<string, string> tokens, string prefix, (int D, int M, double S, bool Dir)? fallback)
         {
@@ -1539,7 +1539,7 @@ namespace MLAstroRPA.Services
             var sRaw = Token(prefix + "ES");
             bool? dirRaw = tokens.TryGetValue(prefix + "Di", out var dirStr) ? dirStr != "0" : null;
 
-            // Firmware: giá trị âm = đảo hướng, phần số lấy trị tuyệt đối (xem handleSerialCommand).
+            // Firmware: a negative value flips the direction and the number is taken as absolute (see handleSerialCommand).
             var negative = (dRaw ?? 0) < 0 || (mRaw ?? 0) < 0 || (sRaw ?? 0) < 0;
 
             var d = dRaw.HasValue ? (int)Math.Abs(dRaw.Value) : fallbackValue.D;
@@ -1549,15 +1549,15 @@ namespace MLAstroRPA.Services
             return (d, (int)m, s, dir);
         }
 
-        /// <summary>Sai số align có dấu (arcsec) từ d/m/s + hướng — dùng cho lệnh align của WebSocket.</summary>
+        /// <summary>Signed align error (arcsec) from d/m/s + direction - used by the WebSocket align command.</summary>
         private static double AlignArcSeconds((int D, int M, double S, bool Dir) parts)
             => ((parts.D * 3600.0) + (parts.M * 60.0) + parts.S) * (parts.Dir ? 1 : -1);
 
         /// <summary>
-        /// Dịch một lần nhấn/nhả nút mũi tên của dock thành lệnh WebSocket.
-        /// - Chế độ Jog: nhấn = `move` (liên tục, KHÔNG gửi lặp vì firmware từ chối khi đang chạy),
-        ///   nhả = `stop`.
-        /// - Chế độ Relative: nhấn = `moveRelative` (một góc), nhả = không làm gì (khớp firmware serial).
+        /// Translates one press/release of a dock arrow button into a WebSocket command.
+        /// - Jog mode: press = `move` (continuous, NEVER re-sent because the firmware refuses while one runs),
+        ///   release = `stop`.
+        /// - Relative mode: press = `moveRelative` (one step), release = nothing (matching the serial firmware).
         /// </summary>
         private List<string> HandleArrow(string axis, int direction, string state)
         {
@@ -1569,8 +1569,8 @@ namespace MLAstroRPA.Services
                 _activeJogDirection = 0;
                 if (!_relativeMode)
                 {
-                    // Nhả jog = GIẢM TỐC mượt theo trục (giống Serial MAzL:0).
-                    // Luôn gửi kể cả khi plugin không thấy lần nhấn trước đó — dừng an toàn hơn.
+                    // Releasing the jog = a smooth DECELERATION of that axis (like Serial MAzL:0).
+                    // It is always sent, even when the plugin never saw the press - stopping is safer.
                     outgoing.Add($"{{\"cmd\":\"stopMove\",\"data\":{{\"axis\":\"{axis}\"}}}}");
                 }
                 return outgoing;
@@ -1585,7 +1585,7 @@ namespace MLAstroRPA.Services
                 return outgoing;
             }
 
-            // Jog liên tục: bỏ qua các lần gửi lặp của watchdog (250 ms) cho cùng hướng.
+            // Continuous jog: the watchdog repeats (every 250 ms) for the same direction are dropped.
             if (_activeJogAxis == axis && _activeJogDirection == direction)
             {
                 return outgoing;
@@ -1601,14 +1601,14 @@ namespace MLAstroRPA.Services
             => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 
         /// <summary>
-        /// `alert` có liên quan giới hạn chuyển động (soft/hard limit, align/relative bị từ chối) hay
-        /// không — các cảnh báo này LUÔN đi kèm một mã lỗi trong ERROR telemetry nên không toast riêng
-        /// (xem chú thích tại nhánh xử lý `alert` trong HandleIncoming).
+        /// Whether an `alert` is about a motion limit (soft/hard limit, refused align/relative) -
+        /// these warnings ALWAYS come with an error code in the ERROR telemetry, so they get no separate toast
+        /// (see the note on the `alert` branch in HandleIncoming).
         /// </summary>
         private static bool IsLimitAlert(string alert)
             => alert.Contains("limit", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>Đưa một dòng trả lời "như từ thiết bị" vào pipeline (và cho adapter ISerialLink).</summary>
+        /// <summary>Pushes a reply line "as if it came from the device" into the pipeline (and the ISerialLink adapter).</summary>
         private void InjectDeviceLine(string line)
         {
             try { LineReceived?.Invoke(line); } catch { }
@@ -1636,18 +1636,18 @@ namespace MLAstroRPA.Services
         }
 
         // ==================================================================
-        // SYSTEM LOG (giống bảng System Log của Web UI)
-        // Chỉ ghi thông báo của firmware/plugin: timestamp + tô màu theo từ khóa,
-        // dòng mới nhất lên trên, tối đa 50 dòng. KHÔNG ghi frame TX/RX thô.
+        // SYSTEM LOG (like the Web UI System Log table)
+        // Firmware/plugin messages only: timestamp + colour by keyword,
+        // newest line on top, 50 lines at most. No raw TX/RX frames.
         // ==================================================================
         private const int SystemLogMaxEntries = 50;
 
         public ObservableCollection<SystemLogEntry> SystemLog { get; } = new();
 
         /// <summary>
-        /// Ghi chẩn đoán của PLUGIN vào NINA log — KHÔNG đưa vào bảng System log.
-        /// Bảng System log chỉ chứa thông báo do THIẾT BỊ gửi (giống hệt bảng System Log của Web UI);
-        /// nếu thêm chữ của plugin vào đây thì nội dung sẽ khác web.
+        /// Writes PLUGIN diagnostics to the NINA log - they do NOT go into the System log table.
+        /// The System log holds DEVICE messages only (exactly like the Web UI System Log table);
+        /// adding plugin text here would make it differ from the web.
         /// </summary>
         private void AppendLog(string text)
         {
@@ -1658,7 +1658,7 @@ namespace MLAstroRPA.Services
             catch { }
         }
 
-        /// <summary>Thêm một dòng vào System log (đã lọc nhiễu + tô màu như Web UI).</summary>
+        /// <summary>Adds a line to the System log (noise filtered + coloured like the Web UI).</summary>
         public void AddSystemLog(string message)
         {
             if (string.IsNullOrWhiteSpace(message))
@@ -1666,7 +1666,7 @@ namespace MLAstroRPA.Services
                 return;
             }
 
-            // Web UI bỏ dòng này vì nó xuất hiện quá nhiều và không hữu ích.
+            // The Web UI drops this line because it appears far too often and is not useful.
             if (message.Contains("Manual stop sequence completed. Hardlimit re-enabled."))
             {
                 return;
@@ -1676,7 +1676,7 @@ namespace MLAstroRPA.Services
 
             void Add()
             {
-                SystemLog.Insert(0, entry); // mới nhất lên trên
+                SystemLog.Insert(0, entry); // newest on top
                 while (SystemLog.Count > SystemLogMaxEntries)
                 {
                     SystemLog.RemoveAt(SystemLog.Count - 1);
@@ -1709,7 +1709,7 @@ namespace MLAstroRPA.Services
             }
         }
 
-        /// <summary>Nội dung CSV của System log (cũ nhất trước) để Export CSV.</summary>
+        /// <summary>CSV content of the System log (oldest first) for Export CSV.</summary>
         public string BuildSystemLogCsv()
         {
             var sb = new StringBuilder();
@@ -1722,7 +1722,7 @@ namespace MLAstroRPA.Services
             return sb.ToString();
         }
 
-        /// <summary>Phân loại màu đúng theo quy tắc của Web UI (appendLog).</summary>
+        /// <summary>Colour classification following the Web UI rules (appendLog).</summary>
         private static SystemLogLevel ClassifyLogLevel(string message)
         {
             if (message.Contains("[SAVE&REBOOT required]")) return SystemLogLevel.RebootRequired;

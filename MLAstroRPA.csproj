@@ -35,8 +35,7 @@
     <Product>MLAstroRPA</Product>
     <Company>MLAstro</Company>
     <Authors>MLAstro</Authors>
-    <Description>MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware:
-CONTROL / CONNECTION / CONFIGURATION options tabs, header bar and the MLAstro docking panel.</Description>
+    <Description>Robotic Polar Alignment navigation and correction driven by Three Point Polar Alignment.</Description>
     <Copyright>Copyright © 2021-2026</Copyright>
     <Version>3.0.0.0</Version>
     <AssemblyVersion>3.0.0.0</AssemblyVersion>
@@ -101,21 +100,21 @@ CONTROL / CONNECTION / CONFIGURATION options tabs, header bar and the MLAstro do
          copied over. 2>nul suppresses the benign "process not found" warning. -->
     <Exec IgnoreExitCode="true" Command="taskkill /f /im NINA.exe 2>nul" />
     <Exec IgnoreExitCode="true" Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;for ($i=0; $i -lt 50; $i++) { if (-not (Get-Process -Name NINA -ErrorAction SilentlyContinue)) { break }; Start-Sleep -Milliseconds 200 }&quot;" />
-    <!-- KHÔNG xoá cả thư mục plugin trong post-build: plugin có FileSystemWatcher trên chính folder
-         của nó (để đóng dockable khi NINA uninstall), thấy folder biến mất sẽ tưởng bị uninstall và
-         đóng/lock dock lại; ngoài ra rmdir trước khi copy có thể để lại folder RỖNG nếu copy thất bại
-         (DLL đang bị NINA giữ). Chỉ cần copy /Y đè DLL. -->
+    <!-- DO NOT delete the whole plugin folder in post-build: the plugin watches its own folder
+         (to close the dockable when NINA uninstalls it), so a folder that disappears looks like an uninstall and it
+         closes/locks the dock again; rmdir before the copy can also leave an EMPTY folder when the copy fails
+         (NINA still holds the DLL). Overwriting the DLL with copy /Y is enough. -->
     <Exec IgnoreExitCode="true" Command="&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins&quot; (&#xD;&#xA;    echo &quot;Creating Plugins %25localappdata%25\NINA\Plugins folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins&quot;&#xD;&#xA;)&#xD;&#xA;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot; (&#xD;&#xA;    echo &quot;Creating %25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA folder&quot;&#xD;&#xA;    mkdir  &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA&quot;&#xD;&#xA;)&#xD;&#xA;echo &quot;Copying $(TargetFileName)&quot;&#xD;&#xA;copy &quot;$(TargetDir)$(TargetFileName)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\MLAstroRPA\$(TargetName)$(TargetExt)&quot; /Y&#xD;&#xA;" />
     <!-- Only the plugin DLL is deployed. NINA shows the logo via
          AssemblyMetadata("FeaturedImageURL") and the in-UI logos are embedded resources. -->
   </Target>
 
   <!-- Keep the MSI/GitHub-release staging copy of the plugin DLL fresh on EVERY build
-       (Debug included - user request 2026-09-20: build Debug cũng copy DLL tới các thư mục đích
-       giống build Release). Building the installer (MLAstroRPA_TPPA.Installer.wixproj) triggers
+       (Debug included - user request 2026-09-20: a Debug build also copies the DLL to the target folders
+       like a Release build). Building the installer (MLAstroRPA_TPPA.Installer.wixproj) triggers
        this via the ProjectReference, and Package.wxs harvests the DLL from
-       Installer\MSI\Plugin\MLAstroRPA_TPPA. Lưu ý: sau khi build Debug, phải build lại Release
-       trước khi đóng MSI/release nếu không muốn gói nhầm DLL Debug. -->
+       Installer\MSI\Plugin\MLAstroRPA_TPPA. Note: after a Debug build, build Release again
+       before packaging the MSI/release, otherwise the package carries the Debug DLL. -->
   <Target Name="RefreshInstallerPluginDll" AfterTargets="PostBuildEvent">
     <PropertyGroup>
       <StagedPluginDir>$(ProjectDir)Installer\MSI\Plugin\MLAstroRPA</StagedPluginDir>

@@ -1,14 +1,5 @@
 ﻿# Changelog
 
-> **License & origin.** This repository is distributed under the **Mozilla Public License 2.0
-> (MPL-2.0)** — see `LICENSE`. Part of the code history comes from the original open-source
-> **Three Point Polar Alignment (TPPA)** plugin for NINA by
-> [Isbeorn](https://github.com/isbeorn/nina.plugin.polaralignment) (MPL-2.0). The TPPA wizard has
-> since been moved out into a separate plugin/repository (it talks to this one through the NINA
-> message broker), so this repository contains only the MLAstro Robotic Polar Alignment
-> hardware-control plugin. When redistributing, comply with MPL-2.0: retain the license and
-> notices and credit the original author.
-
 ## 2.3.0.0 — 2026-09-26
 
 ### Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel
@@ -19,7 +10,7 @@
 ### Fixed — a pause no longer lets a planned move start
 ### Fixed — losing the firmware link (serial or wireless) cancels the TPPA session instead of leaving it waiting
 
-## 2.2.2.0 — 2026-09-25
+## 3.0.0.0 — 2026-09-26
 
 ### Changed — options tabs renamed and reordered: CONTROL, HARDWARE SETTING, SOFTWARE SETTING, CONNECTION
 ### Changed — SOFTWARE SETTING tab: TPPA/broker status moved above the expander, overshoot and reverse-direction toggles moved up next to the assign toggle

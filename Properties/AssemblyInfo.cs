@@ -39,26 +39,27 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyMetadata("FeaturedImageURL", "https://raw.githubusercontent.com/MLAstroRPA/nina.plugin.MLAstroRPA/main/MLAstroRPA-navigation/Resources/MLAstro_logo.png")]
 
-[assembly: AssemblyMetadata("LongDescription", @"MLAstroRPA - NINA plugin for the MLAstro Robotic Polar Alignment hardware.
+[assembly: AssemblyMetadata("LongDescription", @"MLAstro Robotic Polar Alignment control from inside N.I.N.A.
 
-This plugin provides the complete MLAstro Robotic Polar Alignment hardware plugin (CONTROL,
-HARDWARE SETTING and CONNECTION for the MLAstro RPA motor controller over serial or WiFi).
+This plugin is the hardware side of the MLAstro Robotic Polar Alignment system. It talks to the
+MLAstro RPA controller over USB serial or Wi-Fi, jogs the altitude and azimuth axes by hand or by a
+set number of degrees, and shows live position, status and alarms. It also keeps the controller's own
+settings: motor drivers, soft limits, backlash, Wi-Fi and the P.A. overshoot used during a correction.
 
-* CONTROL / HARDWARE SETTING / CONNECTION tabs: connect to the MLAstro RPA controller (ESP32) via
-  serial or WiFi, run the robotic polar alignment routine, configure motor drivers, soft limits,
-  backlash & P.A overshoot and WiFi.
+The whole controller lives in four tabs: CONTROL for the jog pad, position readout and STOP / FORCE
+STOP, HARDWARE SETTING for the controller parameters, SOFTWARE SETTING for the correction options and
+the broker log, and CONNECTION for the serial port or wireless link, the handshake and the on-board
+terminal.
 
-Three Point Polar Alignment (TPPA) is a SEPARATE NINA plugin now; it drives this hardware through
-the NINA message broker.
+For automatic correction, install the Three Point Polar Alignment plugin. TPPA measures the polar
+error and this plugin then moves the axes through the NINA message broker, honouring pause, stop and
+cancel.
 
 Prerequisites
-* Latitude and Longitude have to be set in NINA options.
-* Camera has to be connected and ready.
-* A goto mount that can move along the right ascension axis using one of three methods:
-  + Fully automated - requires the mount connected via its ASCOM driver
-  + Manual mode with mount connected via its ASCOM driver
-  + Manual mode without the mount connected
-* Plate solving must be set up.
+* A supported MLAstro RPA controller, connected over USB serial or Wi-Fi
+* N.I.N.A. 3.1.2 or newer
+* For automatic correction with TPPA: the Three Point Polar Alignment plugin, a camera, plate solving
+  and a mount whose right ascension axis can be moved
 
-For the MLAstroRPA hardware features a supported MLAstro RPA controller must be connected
-via USB serial.")]
+For best results, keep the controller connected in one plugin only: the port and the controller
+firmware accept a single session at a time.")]

@@ -27,16 +27,16 @@ namespace MLAstroRPA.Dockables
         private string? _currentJogCommand = null;
         private readonly object _jogLock = new();
 
-        // Khoá RIÊNG từng nút hướng: bật khi firmware TỪ CHỐI lệnh jog vì soft-limit
-        // (ERROR telemetry token `CmdRf` → mã RfJogAz / RfJogAl). Mở lại khi bấm hướng NGƯỢC LẠI
-        // hoặc tự động sau JOG_UNBLOCK_DELAY_MS.
+        // Per-direction lock: set when the firmware REFUSES a jog command because of a soft limit
+        // (ERROR telemetry token `CmdRf` -> codes RfJogAz / RfJogAl). Unlocked by pressing the OPPOSITE direction
+        // or automatically after JOG_UNBLOCK_DELAY_MS.
         private bool _jogAltUpBlocked;
         private bool _jogAltDownBlocked;
         private bool _jogAzLeftBlocked;
         private bool _jogAzRightBlocked;
         private System.Windows.Threading.DispatcherTimer? _jogUnblockTimer;
 
-        /// <summary>Tự mở khoá nút mũi tên sau bao lâu kể từ lần bị từ chối gần nhất.</summary>
+        /// <summary>How long after the last refusal the arrow buttons unlock themselves.</summary>
         private const int JOG_UNBLOCK_DELAY_MS = 2000;
 
         private bool _disposed = false;
@@ -59,17 +59,17 @@ namespace MLAstroRPA.Dockables
         private string _connectionStatusText = "Disconnected";
         private Visibility _controlsVisibility = Visibility.Collapsed;
 
-        // HeaderBar — dòng AP/STA dùng EMOJI MÀU (NINA/.NET 8 vẽ được emoji màu qua Segoe UI Emoji):
-        //   AP:  🟢 = PC đi qua hotspot (Connected) · 🛜 = AP đã lên nhưng PC đi đường khác (Ready) · ❌ = AP lỗi
-        //   STA: icon vẽ bằng font đơn sắc (XAML: Segoe UI Symbol) nên đổi MÀU được:
-        //        glyph = 📶 có internet · 📶❗ có router nhưng không internet · ❌ chưa vào router;
-        //        màu = xanh lục khi CHÍNH PC đi qua đường STA · xanh lam khi PC đi đường khác
+        // HeaderBar - the AP/STA line uses COLOURED EMOJI (NINA/.NET 8 renders colour emoji through Segoe UI Emoji):
+        //   AP:  <green dot> = PC goes through the hotspot (Connected) - <wireless mark> = AP is up but the PC goes another way (Ready) - <cross> = AP error
+        //   STA: the icon uses a monochrome font (XAML: Segoe UI Symbol), so it can be COLOURED:
+        //        glyph = <bars> internet - <bars+bang> router but no internet - <cross> not joined to the router;
+        //        colour = green when THIS PC goes through STA - blue when the PC goes another way
         private string _apIconGlyph = "\u274C";
-        private string _apStatusText = string.Empty;   // IP của AP (hoặc "-" khi chưa biết)
+        private string _apStatusText = string.Empty;   // IP of the AP (or "-" while unknown)
         private bool _apReady;
         private string _apIp = string.Empty;
         private string _staIconText = "\u274C";
-        // Màu icon riêng cho từng dòng (chỉ ăn khi icon là glyph text đơn sắc — emoji màu bỏ qua Foreground).
+        // Per-line icon colour (it only applies to a monochrome text glyph - coloured emoji ignores Foreground).
         private Brush _apIconBrush = Brushes.Gray;
         private Brush _staIconBrush = Brushes.Gray;
 
@@ -120,16 +120,16 @@ namespace MLAstroRPA.Dockables
         private bool _isEditingAlignment = false;
 
         /// <summary>
-        /// True khi con trỏ đang ở trong một ô D/M/S của dock (Tag "rel"/"az"/"alt"). Dùng làm chốt an
-        /// toàn thứ hai cho luật "đang sửa thì không ghi đè bằng telemetry": cờ Start/EndEditing có thể
-        /// lệch trạng thái (focus vào ô bằng chuột rồi rời đi theo cách không phát LostKeyboardFocus).
+        /// True while the caret sits in a dock D/M/S box (Tag "rel"/"az"/"alt"). It is the second safety
+        /// catch for the "never overwrite while editing" rule: the Start/EndEditing flags can
+        /// drift (the caret enters a box with the mouse and leaves without raising LostKeyboardFocus).
         /// </summary>
         private static bool IsDmsInputFocused()
         {
-            // Telemetry được bơm từ luồng nền của cổng COM. WPF yêu cầu truy cập InputManager/Keyboard
-            // trên UI thread; gọi từ luồng nền có thể ném exception ⇒ phần còn lại của telemetry bị bỏ
-            // qua (mất cập nhật trạng thái motion/jog ⇒ dock khoá điều khiển tay). Vì vậy chỉ kiểm tra
-            // khi đang ở UI thread.
+            // Telemetry is pushed from the COM port background thread. WPF requires InputManager/Keyboard
+            // access on the UI thread; calling it from a background thread can throw => the rest of the telemetry is
+            // dropped (motion/jog state updates are lost => the dock locks manual control). That is why this only
+            // checks while running on the UI thread.
             var app = Application.Current;
             if (app == null || !app.Dispatcher.CheckAccess())
             {
@@ -200,7 +200,7 @@ namespace MLAstroRPA.Dockables
         /// Industrial-HMI-style alarm history. Each row is a driver error/warning code that
         /// became active at <see cref="DriverAlarm.ActivatedAt"/> and, once cleared, shows
         /// the end time on the SAME row via <see cref="DriverAlarm.ClearedAt"/>.
-        /// Thứ tự hiển thị: **mới nhất trên cùng**, cũ dần xuống dưới (xem OnErrorStateChanged).
+        /// Display order: **newest on top**, older entries below (see OnErrorStateChanged).
         /// </summary>
         public ObservableCollection<DriverAlarm> AlarmHistory => _alarmHistory;
 
@@ -258,11 +258,11 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Dòng "AP: ..." ở HeaderBar (thay chỗ nhãn "Connection:" cũ) — chữ thường, cùng font với dòng STA:
-        ///   "AP: connected <IP>" = CHÍNH PC đang đi qua hotspot của ESP32 (firmware báo link=AP);
-        ///   "AP: ready <IP>"     = AP đã lên và có IP nhưng PC đi đường khác (STA/cáp USB);
-        ///   "AP: error"          = AP không lên / không có IP;
-        ///   "AP: -"              = chưa nối được với thiết bị nên chưa biết trạng thái AP.
+        /// The "AP: ..." line in the HeaderBar (it replaced the old "Connection:" label) - lowercase, same font as the STA line:
+        ///   "AP: connected <IP>" = THIS PC runs through the ESP32 hotspot (the firmware reports link=AP);
+        ///   "AP: ready <IP>"     = the AP is up and has an IP but the PC goes another way (STA/USB cable);
+        ///   "AP: error"          = the AP did not come up / has no IP;
+        ///   "AP: -"              = the device is not reachable yet, so the AP state is unknown.
         /// </summary>
         public string ApStatusText
         {
@@ -271,9 +271,9 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Dòng "STA: &lt;icon&gt; IP": text là IP LAN mà router cấp cho ESP32.
-        /// Icon mạng (3 Path trong HeaderBar) đổi theo StaIcon*Visibility:
-        /// gạch chéo = chưa vào router, có dấu ! = có router nhưng không internet, bình thường = có internet.
+        /// The "STA: <icon> IP" line: the text is the LAN IP the router gave the ESP32.
+        /// The network icon (3 Paths in the HeaderBar) follows StaIcon*Visibility:
+        /// a slash = not joined to the router, a bang = router but no internet, plain = internet.
         /// </summary>
         public string StaStatusText
         {
@@ -281,28 +281,28 @@ namespace MLAstroRPA.Dockables
             private set => SetProperty(ref _staStatusText, value);
         }
 
-        /// <summary>Icon dòng AP: 🛜 (PC đi qua hotspot) · 🟢 (AP đã lên, đi đường khác) · ❌ (AP lỗi).</summary>
+        /// <summary>AP line icon: <wireless mark> (PC goes through the hotspot) - <green dot> (AP up, another route) - <cross> (AP error).</summary>
         public string ApIconGlyph
         {
             get => _apIconGlyph;
             private set => SetProperty(ref _apIconGlyph, value);
         }
 
-        /// <summary>Icon dòng STA: 📶 (có internet) · 📶❗ (có router, không internet) · ❌ (chưa vào router).</summary>
+        /// <summary>STA line icon: <bars> (internet) - <bars+bang> (router, no internet) - <cross> (not joined).</summary>
         public string StaIconText
         {
             get => _staIconText;
             private set => SetProperty(ref _staIconText, value);
         }
 
-        /// <summary>Màu icon dòng AP: xám (chưa biết) · xanh lá (Connected) · xanh dương (Ready) · đỏ (Error).</summary>
+        /// <summary>AP line icon colour: grey (unknown) - green (Connected) - blue (Ready) - red (Error).</summary>
         public Brush ApIconBrush
         {
             get => _apIconBrush;
             private set => SetProperty(ref _apIconBrush, value);
         }
 
-        /// <summary>Màu icon dòng STA: xanh lá (có internet) · vàng cam (có router, không internet) · đỏ (chưa vào router).</summary>
+        /// <summary>STA line icon colour: green (internet) - amber (router, no internet) - red (not joined to the router).</summary>
         public Brush StaIconBrush
         {
             get => _staIconBrush;
@@ -343,12 +343,12 @@ namespace MLAstroRPA.Dockables
         public int RelativeDegrees
         {
             get => _relativeDegrees;
-            // Giới hạn theo yêu cầu: độ 0-5, phút 0-59, giây 0-59 (nhập từ bàn phím hay nút +/- đều bị ép).
+            // Limits by design: degrees 0-5, minutes 0-59, seconds 0-59 (typed values and +/- buttons are both clamped).
             set
             {
                 SetProperty(ref _relativeDegrees, Math.Max(0, Math.Min(5, value)));
-                // Raise lại kể cả khi giá trị bị ép về đúng giá trị cũ: người dùng gõ số vượt giới hạn
-                // (vd "6" khi đang là 5) mà không raise thì TextBox vẫn hiển thị số sai.
+                // Raise even when the clamp lands on the old value: when the user types a number past the limit
+                // (e.g. "6" while it holds 5) the TextBox would keep showing the wrong number without a raise.
                 OnPropertyChanged();
             }
         }
@@ -382,8 +382,8 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// End editing relative values - resume telemetry sync. Chỉ gọi khi focus rời khỏi các ô D/M/S
-        /// (xem OnDockLostKeyboardFocus ở code-behind).
+        /// End editing relative values - resume the telemetry sync. Only called when focus leaves the D/M/S boxes
+        /// (see OnDockLostKeyboardFocus in the code-behind).
         /// </summary>
         public void EndEditingRelative()
         {
@@ -391,20 +391,20 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Send relative degrees to hardware immediately. KHÔNG nhả pause telemetry ở đây: người dùng có
-        /// thể đang tiếp tục gõ trong ô, nhả sớm thì telemetry sẽ ghi đè từng phím vừa gõ. Pause chỉ được
-        /// nhả khi focus rời khỏi các ô D/M/S.
+        /// Send relative degrees to the hardware immediately. Do NOT release the telemetry pause here: the user may
+        /// still be typing in the box, and an early release lets telemetry overwrite every keystroke. The pause is
+        /// only released when focus leaves the D/M/S boxes.
         /// </summary>
         public void SendRelativeDegrees()
         {
-            // Nhả pause sau khi đã gửi: telemetry (echo từ thiết bị) phải chạy lại để UI khớp thiết bị.
-            // Lúc người dùng còn đang gõ trong ô, IsDmsInputFocused() vẫn chặn telemetry ghi đè.
+            // Release the pause after sending: telemetry (the echo from the device) has to run again so the UI matches the device.
+            // While the user is still typing, IsDmsInputFocused() keeps telemetry from overwriting.
             _isEditingRelativeValues = false;
             SendCommand($"ReDe:{_relativeDegrees}\n");
             Logger.Info($"[MLAstro] Sent ReDe:{_relativeDegrees}");
         }
 
-        /// <summary>Send relative minutes to hardware immediately (xem ghi chú ở SendRelativeDegrees).</summary>
+        /// <summary>Send relative minutes to the hardware immediately (see the note on SendRelativeDegrees).</summary>
         public void SendRelativeMinutes()
         {
             _isEditingRelativeValues = false;
@@ -412,7 +412,7 @@ namespace MLAstroRPA.Dockables
             Logger.Info($"[MLAstro] Sent ReAM:{_relativeMinutes}");
         }
 
-        /// <summary>Send relative seconds to hardware immediately (xem ghi chú ở SendRelativeDegrees).</summary>
+        /// <summary>Send relative seconds to the hardware immediately (see the note on SendRelativeDegrees).</summary>
         public void SendRelativeSeconds()
         {
             _isEditingRelativeValues = false;
@@ -629,13 +629,13 @@ namespace MLAstroRPA.Dockables
         /// </summary>
         public bool CanManualControl => !_isAutomatedAdjustment && !IsAutomaticMotion && !HasActiveErrors && !IsExternalLocked;
 
-        // --- Nút mũi tên (jog): IsEnabled = CanManualControl && chưa bị khoá do firmware từ chối ---
+        // --- Arrow buttons (jog): IsEnabled = CanManualControl && not locked by a firmware refusal ---
         public bool CanJogAltUp => CanManualControl && !_jogAltUpBlocked;
         public bool CanJogAltDown => CanManualControl && !_jogAltDownBlocked;
         public bool CanJogAzLeft => CanManualControl && !_jogAzLeftBlocked;
         public bool CanJogAzRight => CanManualControl && !_jogAzRightBlocked;
 
-        /// <summary>Báo cho UI biết trạng thái enable của 4 nút mũi tên có thể đổi.</summary>
+        /// <summary>Tells the UI that the enabled state of the four arrow buttons may have changed.</summary>
         private void NotifyCanJogChanged()
         {
             OnPropertyChanged(nameof(CanJogAltUp));
@@ -651,7 +651,7 @@ namespace MLAstroRPA.Dockables
             OnPropertyChanged(propertyName);
         }
 
-        /// <summary>Mở khoá cả hai hướng của một trục (gọi khi người dùng bấm lại nút mũi tên).</summary>
+        /// <summary>Unlocks both directions of one axis (called when the user presses an arrow button again).</summary>
         private void UnblockJogAxis(string axis)
         {
             if (axis == "az")
@@ -666,7 +666,7 @@ namespace MLAstroRPA.Dockables
             }
         }
 
-        /// <summary>Tách lệnh jog text ("MAzL:1") thành trục + chiều: az:-1/+1 = trái/phải, alt:+1/-1 = lên/xuống.</summary>
+        /// <summary>Splits a jog command ("MAzL:1") into axis + direction: az -1/+1 = left/right, alt +1/-1 = up/down.</summary>
         private static (string axis, int direction) ParseJogCommand(string command)
         {
             if (command.StartsWith("MAzL", StringComparison.OrdinalIgnoreCase)) return ("az", -1);
@@ -677,10 +677,10 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Hẹn mở khoá nút mũi tên sau JOG_UNBLOCK_DELAY_MS kể từ lần bị từ chối GẦN NHẤT (mỗi lần
-        /// bị từ chối lại dời hẹn). Cảnh báo "trục đang ở biên" là TẠM THỜI — trục có thể đã được đưa
-        /// ra khỏi giới hạn bằng nguồn khác (relative / auto / web) nên không giữ nút khoá vĩnh viễn.
-        /// Dùng DispatcherTimer để Tick chạy ngay trên UI thread (4 property IsEnabled không cần marshal).
+        /// Schedules the arrow-button unlock JOG_UNBLOCK_DELAY_MS after the LATEST refusal (every
+        /// refusal moves the deadline). The "axis is at its limit" warning is TEMPORARY - the axis may have been
+        /// moved back inside its limits by another source (relative / auto / web), so the button is not locked forever.
+        /// A DispatcherTimer keeps Tick on the UI thread (the four IsEnabled properties need no marshalling).
         /// </summary>
         private void StartJogUnblockTimer()
         {
@@ -701,21 +701,21 @@ namespace MLAstroRPA.Dockables
                 };
             }
 
-            _jogUnblockTimer.Stop();   // dời hẹn tính từ lần từ chối gần nhất
+            _jogUnblockTimer.Stop();   // the deadline counts from the latest refusal
             _jogUnblockTimer.Start();
         }
 
         /// <summary>
-        /// Firmware TỪ CHỐI lệnh jog vì soft-limit (ERROR telemetry `CmdRf` → RfJogAz / RfJogAl).
-        /// Cách xử lý: KHOÁ đúng nút hướng vừa bấm, nhả nút một lần (gửi "MAzL:0") rồi KHÔNG gửi
-        /// gì nữa — vì khi button bị disable, WPF không phát MouseUp/MouseLeave nên handler nhả nút
-        /// không chạy, phải gọi StopJogMovement() tường minh (nó cũng dừng watchdog 250 ms).
+        /// The firmware REFUSED a jog command because of a soft limit (ERROR telemetry `CmdRf` -> RfJogAz / RfJogAl).
+        /// Handling: LOCK exactly the direction that was pressed, release the button once (send "MAzL:0") and send
+        /// nothing else - a disabled button raises no MouseUp/MouseLeave in WPF, so the release handler
+        /// never runs; StopJogMovement() has to be called explicitly (it also stops the 250 ms watchdog).
         /// </summary>
         private void HandleJogRefused(string axis)
         {
             string? cmd;
             lock (_jogLock) { cmd = _currentJogCommand; }
-            if (string.IsNullOrEmpty(cmd)) return;      // lệnh không phải do plugin này phát ra
+            if (string.IsNullOrEmpty(cmd)) return;      // the command was not issued by this plugin
 
             var (jogAxis, direction) = ParseJogCommand(cmd!);
             if (direction == 0 || !string.Equals(jogAxis, axis, StringComparison.Ordinal)) return;
@@ -731,9 +731,9 @@ namespace MLAstroRPA.Dockables
                 else SetJogBlocked(ref _jogAltDownBlocked, true, nameof(CanJogAltDown));
             }
 
-            StartJogUnblockTimer();   // tự mở khoá sau 2 s (ngoài cách bấm hướng ngược lại)
-            StopJogMovement();   // gửi ":0" + dừng watchdog + xoá lệnh đang chạy → không gửi gì nữa
-            Logger.Info($"[MLAstro] Jog {axis} bị từ chối (soft limit) → khoá nút hướng, đã nhả jog");
+            StartJogUnblockTimer();   // unlock itself after 2 s (besides pressing the opposite direction)
+            StopJogMovement();   // sends ":0" + stops the watchdog + clears the running command -> nothing is sent again
+            Logger.Info($"[MLAstro] Jog {axis} refused (soft limit) -> direction locked, jog released");
         }
 
         /// <summary>
@@ -744,8 +744,8 @@ namespace MLAstroRPA.Dockables
 
         public bool CanAlign => CanAutomaticControl;
 
-        /// <summary>TPPA (plugin ngoài) đang GIỮ quyền điều khiển -> khoá hầu hết điều khiển/cài đặt
-        /// (chỉ chừa nút STOP/E-STOP và tab CONNECTION).</summary>
+        /// <summary>TPPA (external plugin) HOLDS control -> most controls and settings are locked
+        /// (only the STOP/E-STOP buttons and the CONNECTION tab stay usable).</summary>
         public bool IsExternalLocked
         {
             get => _externalLocked;
@@ -785,9 +785,9 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Gửi NGAY giá trị sai số của MỘT trục — dùng khi user nhấn Enter trong ô DMS
-        /// (không cần đợi bấm Align). Firmware chỉ ghi FRAM + broadcast cho các client khác
-        /// (web UI), KHÔNG chạy motor.
+        /// Sends the error of ONE axis right away - used when the user presses Enter in a DMS box
+        /// (no need to wait for the Align button). The firmware only writes FRAM and broadcasts to the other clients
+        /// (the web UI); it does NOT move a motor.
         /// </summary>
         public void SendAlignmentAxisError(string axis)
         {
@@ -869,7 +869,7 @@ namespace MLAstroRPA.Dockables
         public ICommand AlignAllCommand { get; }
         public ICommand ToggleModifyCommand { get; }
 
-        /// <summary>Xoá bảng Alarm History (thao tác của người dùng, không ảnh hưởng trạng thái lỗi).</summary>
+        /// <summary>Clears the Alarm History table (a user action, it does not touch the error state).</summary>
         public ICommand ClearAlarmHistoryCommand { get; }
 
         #endregion
@@ -878,8 +878,8 @@ namespace MLAstroRPA.Dockables
         public PolarAlignmentDockVM(IProfileService profileService, PluginSettings settings)
             : base(profileService)
         {
-            // Tiêu đề dock phải NÓI RÕ plugin nào: bản MLAstroRPA+TPPA cũng có dock cùng tên gốc
-            // "MLAstro RPA Control", hai plugin cùng cài thì không thể phân biệt bằng mắt.
+            // The dock title has to SAY which plugin this is: MLAstroRPA+TPPA has a dock with the same original
+            // name "MLAstro RPA Control", and with both plugins installed they cannot be told apart by eye.
             Title = "MLAstro RPA Control (MLAstroRPA)";
             Logger.Info("[MLAstro] PolarAlignmentDockVM created");
 
@@ -931,11 +931,11 @@ namespace MLAstroRPA.Dockables
             _serialService.TelemetryDataReceived += OnTelemetryDataReceived;
             _serialService.CompletionReceived += OnCompletionReceived;
             _serialService.ErrorStateChanged += OnErrorStateChanged;
-            // Khoá/mở khoá UI khi TPPA (plugin ngoài) giữ/thả quyền điều khiển.
+            // Locks/unlocks the UI while TPPA (external plugin) takes/releases control.
             _serialService.AddExternalControlListener(active => IsExternalLocked = active);
 
             FirmwareVersion = _serialService.FirmwareVersion;
-            UpdateApStatus();   // dòng "AP: Connected/Ready/Error" theo trạng thái hiện tại
+            UpdateApStatus();   // the "AP: Connected/Ready/Error" line for the current state
         }
 
         private void OnTelemetryDataReceived(object? sender, TelemetryDataEventArgs e)
@@ -1048,10 +1048,10 @@ namespace MLAstroRPA.Dockables
             // For now, keep placeholder values
             // AzOutSpeed, AltOutSpeed, AzMotorSpeed, AltMotorSpeed remain as initialized
 
-            // Dòng "STA: <icon> IP" ở HeaderBar (token WQu + STAi của firmware)
+            // The "STA: <icon> IP" line in the HeaderBar (firmware tokens WQu + STAi)
             UpdateStaStatus(e.Data.StaQuality, e.Data.StationIP);
 
-            // Dòng "AP: Connected/Ready/Error <IP>" ở HeaderBar (token APrd + APip của firmware)
+            // The "AP: Connected/Ready/Error <IP>" line in the HeaderBar (firmware tokens APrd + APip)
             _apReady = e.Data.ApReady;
             _apIp = e.Data.ApIp ?? string.Empty;
             UpdateApStatus();
@@ -1127,13 +1127,13 @@ namespace MLAstroRPA.Dockables
                 }
 
                 var alarm = new DriverAlarm(kv.Key, DriverErrorState.Describe(kv.Key), kv.Value);
-                // Chèn lên ĐẦU danh sách: alarm mới nhất nằm trên cùng, alarm cũ hơn xuống dưới.
-                // (DataGrid khoá sắp xếp CanUserSortColumns=False → hiển thị đúng thứ tự này.)
+                // Inserted AT THE TOP: the newest alarm sits on top, older alarms below.
+                // (the DataGrid locks sorting with CanUserSortColumns=False, so this order is what shows.)
                 _alarmHistory.Insert(0, alarm);
                 NotifyAlarm(alarm);
             }
 
-            // Keep history bounded — bỏ dòng CŨ NHẤT (nay nằm ở cuối danh sách)
+            // Keep history bounded - drop the OLDEST row (which now sits at the end of the list)
             while (_alarmHistory.Count > AlarmHistoryMaxEntries)
             {
                 _alarmHistory.RemoveAt(_alarmHistory.Count - 1);
@@ -1143,28 +1143,28 @@ namespace MLAstroRPA.Dockables
             HasActiveWarnings = state.HasWarnings;
             AlarmHistoryVisibility = _alarmHistory.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            // Trục bị soft-limit chặn trong lúc đang giữ nút jog → khoá nút hướng vừa bấm, nhả nút
-            // một lần (gửi ":0") rồi không gửi lệnh nào nữa. Xem HandleJogRefused().
-            //  - `AzSL`/`AlSL`: guard toàn cục vừa DỪNG trục tại biên (báo cho mọi nguồn chuyển động).
-            //  - `RfJogAz`/`RfJogAl`: trục đã ĐỨNG SẴN tại biên mà còn nhấn jog. Firmware chỉ bật bit
-            //    này khi AzSL/AlSL đã tắt nên hai nguồn KHÔNG bao giờ trùng (không có 2 dòng Alarm).
+            // The axis hit a soft limit while the jog button was held -> lock the direction just pressed, release the button
+            // once (send ":0") and send nothing further. See HandleJogRefused().
+            //  - `AzSL`/`AlSL`: the global guard just STOPPED the axis at its limit (it notifies every motion source).
+            //  - `RfJogAz`/`RfJogAl`: the axis was ALREADY at its limit and jog was pressed again. The firmware sets this bit
+            //    only once AzSL/AlSL cleared, so the two never overlap (no duplicate alarm rows).
             if (IsCodeActive(state, "AzSL") || IsCodeActive(state, "RfJogAz")) HandleJogRefused("az");
             if (IsCodeActive(state, "AlSL") || IsCodeActive(state, "RfJogAl")) HandleJogRefused("alt");
         }
 
-        /// <summary>True khi mã lỗi/cảnh báo đang ở mức WARNING (1) hoặc ERROR (2).</summary>
+        /// <summary>True while the code is at WARNING (1) or ERROR (2) level.</summary>
         private static bool IsCodeActive(DriverErrorState state, string code)
         {
             return state.Codes.TryGetValue(code, out var value) && (value == 1 || value == 2);
         }
 
         /// <summary>
-        /// Nút CLEAR trên bảng Alarm: chỉ xoá LỊCH SỬ hiển thị. KHÁC với ClearAlarmHistory() (dùng khi
-        /// ngắt kết nối) — không đụng vào trạng thái lỗi/cảnh báo đang active của thiết bị.
+        /// The CLEAR button on the Alarm table only clears the DISPLAYED HISTORY. DIFFERENT from ClearAlarmHistory() (called on
+        /// disconnect) - it leaves the active error/warning state of the device untouched.
         /// </summary>
         private void ClearAlarmHistoryRows()
         {
-            // Có thể được gọi từ thread khác → đưa về UI thread.
+            // May be called from another thread -> it hops to the UI thread.
             if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
             {
                 Application.Current.Dispatcher.BeginInvoke(new Action(ClearAlarmHistoryRows));
@@ -1215,7 +1215,7 @@ namespace MLAstroRPA.Dockables
             if (e.PropertyName == nameof(SerialConnectionService.IsConnected))
             {
                 UpdateConnectionStatus();
-                UpdateApStatus(); // đổi transport (COM ⇄ wireless) là đổi đường vào
+                UpdateApStatus(); // switching transport (COM <-> wireless) changes the entry path
             }
             else if (e.PropertyName == nameof(SerialConnectionService.HandshakeStatus))
             {
@@ -1269,12 +1269,12 @@ namespace MLAstroRPA.Dockables
         }
 
         /// <summary>
-        /// Dòng "AP: ..." trên HeaderBar. Trạng thái AP của THIẾT BỊ lấy từ telemetry (token APrd/APip);
-        /// việc PC có đang đi QUA đường AP hay không lấy từ `link` mà firmware báo ở handshakeResult.
+        /// The "AP: ..." line in the HeaderBar. The DEVICE AP state comes from telemetry (tokens APrd/APip);
+        /// whether the PC goes THROUGH the AP comes from the `link` the firmware reports in handshakeResult.
         /// </summary>
         private void UpdateApStatus()
         {
-            // Chưa nói chuyện được với thiết bị thì chưa biết AP thế nào.
+            // Until the device answers, the AP state is unknown.
             if (!_serialService.IsConnected)
             {
                 ApIconGlyph = string.Empty;
@@ -1294,31 +1294,31 @@ namespace MLAstroRPA.Dockables
             ApStatusText = string.IsNullOrWhiteSpace(_apIp) ? string.Empty : _apIp.Trim();
             if (string.Equals(_serialService.LinkPath, "AP", StringComparison.OrdinalIgnoreCase))
             {
-                // 🛜 green: Connected: CHÍNH PC (NINA) đang đi qua hotspot của ESP32.
+                // <wireless mark> green: Connected - THIS PC (NINA) goes through the ESP32 hotspot.
                 ApIconGlyph = "\U0001F6DC";
                 ApIconBrush = Brushes.LimeGreen;
             }
             else
             {
-                // 🛜 blue: Ready: AP đã lên nhưng PC đi đường khác (STA / cáp USB).
+                // <wireless mark> blue: Ready - the AP is up but the PC goes another way (STA / USB cable).
                 ApIconGlyph = "\U0001F6DC";
                 ApIconBrush = Brushes.DodgerBlue;
             }
         }
 
         /// <summary>
-        /// Dòng "STA: &lt;icon&gt; IP" trên HeaderBar — glyph = chất lượng sóng, MÀU = trạng thái CLIENT:
-        ///   glyph (token WQu): 0 = chưa vào router → ❌ · 1 = có router, không internet → 📶❗ ·
-        ///   2 = có internet → 📶 (text = IP LAN của thiết bị, "none" khi chưa vào router).
-        ///   màu (LinkPath): xanh lục khi CHÍNH PC (NINA) đang đi qua đường STA; xanh lam khi PC đi
-        ///   đường khác (cáp USB "COM" hoặc hotspot "AP"). Riêng ❌ chưa vào router giữ màu đỏ.
-        ///   Icon phải vẽ bằng font đơn sắc (XAML: Segoe UI Symbol) thì Foreground mới ăn.
+        /// The "STA: <icon> IP" line in the HeaderBar - glyph = link quality, COLOUR = CLIENT state:
+        ///   glyph (token WQu): 0 = not joined to the router -> <cross> - 1 = router, no internet -> <bars+bang> -
+        ///   2 = internet -> <bars> (text = the LAN IP of the device, "none" while not joined).
+        ///   colour (LinkPath): green when THIS PC (NINA) goes through STA; blue when the PC goes
+        ///   another way (USB cable "COM" or hotspot "AP"). The <cross> not-joined case stays red.
+        ///   The icon must use a monochrome font (XAML: Segoe UI Symbol) for Foreground to apply.
         /// </summary>
         private void UpdateStaStatus(int staQuality, string? staIp)
         {
             var ip = string.IsNullOrWhiteSpace(staIp) ? string.Empty : staIp.Trim();
 
-            // Trạng thái client: CHÍNH PC (NINA) có đang đi qua đường STA này không.
+            // Client state: does THIS PC (NINA) currently go through this STA route.
             var clientViaSta = string.Equals(_serialService.LinkPath, "STA", StringComparison.OrdinalIgnoreCase);
             var clientBrush = clientViaSta ? Brushes.LimeGreen : Brushes.DodgerBlue;
 
@@ -1367,7 +1367,7 @@ namespace MLAstroRPA.Dockables
 
         public void StartMoveUp()
         {
-            UnblockJogAxis("alt");   // bấm lại (hướng ngược lại) → mở khoá nút mũi tên của trục này
+            UnblockJogAxis("alt");   // pressed again (opposite direction) -> unlock this axis arrow buttons
             if (IsRelativeMode)
             {
                 SendRelativeMove("MAlU");
@@ -1530,8 +1530,8 @@ namespace MLAstroRPA.Dockables
             }
             else
             {
-                // Trước đây rơi vào nhánh này là IM LẶNG ⇒ nút vẫn bấm được nhưng không có gì xuống firmware,
-                // rất khó chẩn đoán (ví dụ khi có 2 plugin MLAstro cùng cài, dock của plugin KHÔNG giữ cổng COM).
+                // This branch used to be SILENT => the buttons still worked but nothing reached the firmware,
+                // which is hard to diagnose (e.g. with two MLAstro plugins installed, the dock of the plugin that does NOT own the COM port).
                 Logger.Warning($"[MLAstro] Command dropped - link not connected: {command.TrimEnd()}");
             }
         }

@@ -16,7 +16,7 @@
                               PreviewMouseWheel="OnScrollViewerPreviewMouseWheel">
                     <StackPanel Margin="10">
                     <Grid>
-                    <StackPanel Margin="10">                        <!-- Kiểu kết nối: CHỈ chọn 1 trong 2 (Serial hoặc Wireless). -->
+                    <StackPanel Margin="10">                        <!-- Connection type: pick EXACTLY one (Serial or Wireless). -->
                         <StackPanel Margin="0,0,0,10" HorizontalAlignment="Left">
                             <TextBlock Text="Connection type" Margin="0,0,0,5" />
                             <StackPanel Orientation="Horizontal">
@@ -24,7 +24,7 @@
                                     <ComboBoxItem Content="Serial connection" />
                                     <ComboBoxItem Content="Wireless connection" />
                                 </ComboBox>
-                                <!-- Cảnh báo: đổi Connection type sẽ ngắt phiên đang mở (chỉ 1 transport giữ quyền). -->
+                                <!-- Warning: switching the connection type drops the open session (a single transport holds control). -->
                                 <TextBlock
                                     Margin="10,0,0,0"
                                     MaxWidth="430"
@@ -36,7 +36,7 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- ===== SERIAL SETTINGS (ẩn hoàn toàn khi chọn Wireless connection) ===== -->
+                        <!-- ===== SERIAL SETTINGS (hidden completely when the Wireless connection is selected) ===== -->
                         <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource MlaRpaBoolToVis}}">                        <WrapPanel Margin="0,0,0,10">
                             <StackPanel Width="220" Margin="0,0,10,10">
                                 <TextBlock Text="COM Port" Margin="0,0,0,5" />
@@ -74,8 +74,8 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <!-- Khoá nút gạt khi TPPA đang mượn cổng (external control): lúc đó poll '?' auto-pause,
-                                 không cho user tự bật/tắt giữa phiên TPPA điều khiển. Mở lại khi TPPA trả quyền. -->
+                            <!-- Locks the switch while TPPA borrows the port (external control): the '?' poll auto-pauses then,
+                                 so the user cannot toggle it during a TPPA session. It unlocks when TPPA hands the port back. -->
                             <CheckBox IsChecked="{Binding IsPauseQuery, Mode=TwoWay}"
                                       IsEnabled="{Binding IsExternalUnlocked}"
                                       VerticalAlignment="Center"
@@ -166,7 +166,7 @@
 
                             <TextBlock Text="System log:" Margin="0,0,0,5" />
 
-                            <!-- Nút giống Web UI: RESET ERROR / Export CSV / Clear -->
+                            <!-- Buttons matching the Web UI: RESET ERROR / Export CSV / Clear -->
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                 <Button Content="⚠ RESET ERROR"
                                         Width="120"
@@ -181,9 +181,9 @@
                                         Command="{Binding ClearSystemLogCommand}" />
                             </StackPanel>
 
-                            <!-- Bảng log giống Web UI: [thời gian] nội dung, tô màu theo mức độ,
-                                 dòng mới nhất lên trên, tối đa 50 dòng. Nền theo theme NINA
-                                 (không tint nền), cho phép bôi chọn + Copy qua context menu. -->
+                            <!-- Log table like the Web UI: [time] content, coloured by level,
+                                 newest line on top, 50 lines at most. The background follows the NINA theme
+                                 (no background tint), selectable and copyable through the context menu. -->
                             <RichTextBox Height="180"
                                          MinHeight="180"
                                          IsReadOnly="True"
@@ -211,7 +211,7 @@
                                    DragDelta="OnSerialTerminalResizeThumbDragDelta" />
                         </StackPanel>
 
-                        <!-- ===== SERIAL TERMINAL (chỉ hiện khi chọn Serial connection) ===== -->
+                        <!-- ===== SERIAL TERMINAL (only shown when the Serial connection is selected) ===== -->
                         <StackPanel Visibility="{Binding IsSerialSettingsVisible, Converter={StaticResource MlaRpaBoolToVis}}">
                             <TextBlock Text="Serial Terminal" Margin="0,0,0,5" />
                         <RichTextBox Height="180"
@@ -640,12 +640,12 @@
     </DataTemplate>
 
     <!-- SOFTWARE SETTING tab body (hosted with DataContext = MLAstroController).
-         Tích hợp broker với plugin Three Point Polar Alignment: bật/tắt bắt tay, chiến lược sửa
-         và trạng thái phiên. -->
+         Broker integration with the Three Point Polar Alignment plugin: handshake on/off, correction strategy
+         and session state. -->
     <DataTemplate x:Key="MlaRpaSoftwareBody">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="10">
-                <!-- Status nằm NGOÀI expander để luôn nhìn thấy, kể cả khi expander bị thu gọn. -->
+                <!-- The status sits OUTSIDE the expander so it stays visible even when the expander is collapsed. -->
                 <Border Margin="0,0,0,10"
                         Padding="8,6"
                         Background="Transparent"
@@ -816,7 +816,7 @@
                                FontSize="11"
                                TextWrapping="Wrap"
                                Text="RPA &#8594; TPPA (blue) = sent to TPPA &#183; TPPA &#8594; RPA (green) = received from TPPA &#183; notice (yellow) = local status of this plugin." />
-                    <!-- Nền Transparent để ăn theo theme NINA (không tint trắng như ListBox mặc định). -->
+                    <!-- Transparent background so it follows the NINA theme (no white tint like the default ListBox). -->
                     <ListBox MinHeight="120"
                              MaxHeight="260"
                              Margin="0,8,0,0"
