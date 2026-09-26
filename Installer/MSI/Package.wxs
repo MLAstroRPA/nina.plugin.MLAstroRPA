@@ -12,7 +12,7 @@
 
   <!-- Define variables -->
   <?define ProductName = "MLAstroRPA" ?>
-  <?define ProductVersion = "3.0.0.0" ?>
+  <?define ProductVersion = "3.1.0.0" ?>
   <?define Manufacturer = "MLAstro" ?>
   <?define UpgradeCode = "F1B678EE-AA5A-4A34-B7CE-2625CAD7934C" ?>
   <?define PluginFolderName = "MLAstroRPA" ?>
