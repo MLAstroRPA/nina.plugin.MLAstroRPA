@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## 2.3.0.0 — 2026-09-26
+## 3.0.0.0 — 2026-09-26
 
 ### Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel
 ### Changed — bridge code renamed from TppaBroker/ExternalCorrection to the Bridge vocabulary (BridgeClient, BridgeContract, BridgePayloads, BridgeRunner, BridgeEngine); every wire string is unchanged
