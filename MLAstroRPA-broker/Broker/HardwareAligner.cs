@@ -46,12 +46,9 @@ namespace MLAstroRPA.Broker
         /// <summary>Firmware STATUS token of the last telemetry ("READY", "MOVING", …), empty while unknown.</summary>
         public string DeviceStatus => _serial.DeviceStatus;
 
-        /// <summary>Probes the COM ports for the controller - used when a session needs the hardware and the link is down.</summary>
-        public string ScanForDeviceComPort() => _serial.ScanForDeviceComPort();
-
         /// <summary>Opens the serial link on the given port (the caller owns the transport decision).</summary>
-        public Task<bool> ConnectSerialAsync(string portName, int baudRate, bool sendHandshake = true)
-            => _serial.ConnectAsync(portName, baudRate, sendHandshake);
+        public Task<bool> ConnectSerialAsync(string portName, int baudRate)
+            => _serial.ConnectAsync(portName, baudRate);
 
         /// <summary>Sends the handshake and reports whether the firmware answered - the only proof that the right device is on the port.</summary>
         public Task<bool> SendHandshakeAsync() => _serial.SendHandshakeAsync();

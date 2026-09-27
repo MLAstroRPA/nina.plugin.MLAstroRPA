@@ -899,12 +899,7 @@ namespace MLAstroRPA.Services
             public string FriendlyName { get; }
         }
 
-        /// <summary>
-        /// Opens the port and, unless <paramref name="sendHandshake"/> is false, greets the firmware right
-        /// away. A caller that already verified the port (a scan probe) passes false and sends the handshake
-        /// itself, so the device is never greeted twice for one connect.
-        /// </summary>
-        public async Task<bool> ConnectAsync(string portName, int baudRate, bool sendHandshake = true)
+        public async Task<bool> ConnectAsync(string portName, int baudRate)
         {
             if (string.IsNullOrWhiteSpace(portName))
             {
@@ -987,11 +982,7 @@ namespace MLAstroRPA.Services
                 PauseQueryGlobal = false;
                 StartConnectionCheckTimer();
                 StartDeviceChangeWatcher();
-                if (sendHandshake)
-                {
-                    _ = StartHandshakeAndConnectionChecksAsync();
-                }
-
+                _ = StartHandshakeAndConnectionChecksAsync();
                 RaiseExternalState(true);
                 return true;
             }
