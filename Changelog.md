@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## 3.1.1.0 — 2026-09-27
+
+### Added — the controller announces its hardware readiness (firmware STATUS token) on `ControllerReady`, when the TPPA session opens and again whenever the axes go busy or ready, so TPPA can check the controller before the hand-over
+### Added — the readiness report also carries `HardwareConnected`, so TPPA can tell "no link to the hardware" apart from "connected but the axes are busy"
+### Added — when TPPA reports that the three reference points are finished while the hardware link is down, the controller tries the selected transport first (serial scan or wireless connect) and the other transport once as a fallback, then reports readiness or a fault
+### Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
+
 ## 3.1.0.0 — 2026-09-27
 
 ### Added — CONNECTION tab: "Auto scan COM port" toggle - with it enabled the COM-port list is replaced by a Start button that probes every COM port for the controller (same `[MLAstroRPA-TC]` handshake as TPPA), selects the port that answered and connects to it (the button turns into Disconnect once the session is up); the Reset ESP32 button is shown only while connected

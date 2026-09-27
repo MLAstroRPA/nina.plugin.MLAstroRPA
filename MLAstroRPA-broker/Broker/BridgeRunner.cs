@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using MLAstroRPA.Services;
 using MLAstroRPA.Settings;
 using NINA.Core.Utility;
 
@@ -102,6 +103,10 @@ namespace MLAstroRPA.Broker
 
             _watchdogTimer = new System.Timers.Timer(1000) { AutoReset = true };
             _watchdogTimer.Elapsed += OnWatchdogTick;
+
+            // TPPA asks for this controller's readiness before it hands the correction over, so a busy
+            // controller has to announce that as soon as the axes go busy or idle again.
+            _aligner.ReadinessChanged += OnAlignerReadinessChanged;
         }
 
         /// <summary>Raised whenever <see cref="StatusText"/> changes.</summary>
@@ -427,6 +432,42 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
+            if (string.Equals(state.State, BridgeState.WaitingForRequest, StringComparison.Ordinal)
+                && string.Equals(state.Reason, BridgeReason.MeasurementsFinished, StringComparison.Ordinal))
+            {
+                // The three reference points are measured: only now are the axes needed. A controller that
+                // is still offline brings its hardware up here (selected transport, then the other one
+                // once) and reports the result - that report is what TPPA checks before the hand-over.
+                Logger.Info($"[MLAstro][Broker] TPPA finished the reference sweep. Hardware connected: {_aligner.IsConnected}.");
+                SetStatus("Connecting the hardware...");
+
+                if (!await TryConnectHardwareAsync().ConfigureAwait(false))
+                {
+                    SetStatus("Hardware not connected");
+                    await _client.PublishAsync(BridgeKind.Fault,
+                                               SessionId,
+                                               new ControllerFaultPayload
+                                               {
+                                                   Reason = BridgeReason.ControllerFault,
+                                                   Detail = $"No link to the MLAstro controller over {_settings.TransportMode} or over the fallback transport.",
+                                                   HardwareStopStatus = BridgeHardwareStopStatus.Unknown
+                                               }).ConfigureAwait(false);
+                    return;
+                }
+
+                if (!IsSessionRunning)
+                {
+                    // The session never started (the link was down when TPPA opened it): start it now so
+                    // the measurements that follow are accepted.
+                    ResetSessionState();
+                    OnSessionStarted();
+                }
+
+                SetStatus("TPPA session: controller ready");
+                await PublishReadinessAsync(SessionId, SessionId).ConfigureAwait(false);
+                return;
+            }
+
             SetStatus($"TPPA session: {state.State}");
 
             if (string.Equals(state.Reason, BridgeReason.SilenceTimeout, StringComparison.Ordinal))
@@ -448,35 +489,168 @@ namespace MLAstroRPA.Broker
 
             BridgeSettings.FromPluginSettings(_settings);
 
-            if (!_aligner.IsConnected)
-            {
-                Logger.Warning("[MLAstro][Broker] TPPA started a session but the hardware is not connected. Reporting a fault.");
-                SetStatus("Hardware not connected");
-                await _client.PublishAsync(BridgeKind.Fault,
-                                           sessionId,
-                                           new ControllerFaultPayload
-                                           {
-                                               Reason = BridgeReason.ControllerFault,
-                                               Detail = "The MLAstro hardware link is not connected.",
-                                               HardwareStopStatus = BridgeHardwareStopStatus.Unknown
-                                           }).ConfigureAwait(false);
-                return;
-            }
-
             ResetSessionState();
-            SetStatus("TPPA session: controller ready");
+            SetStatus(_aligner.IsConnected
+                ? "TPPA session: controller ready"
+                : "TPPA session: hardware offline - connecting after the reference sweep");
+
+            // Nothing is connected here on purpose: TPPA is still measuring the three reference points and
+            // does not need the axes yet. The link is brought up once the sweep is finished (see
+            // HandleSessionStateAsync), so the hand-over prompt sees the real readiness.
+            await PublishReadinessAsync(sessionId, SessionId).ConfigureAwait(false);
+
+            OnSessionStarted();
+        }
+
+        /// <summary>
+        /// Brings the hardware link up when TPPA asks for a session: the selected transport is tried first
+        /// (serial scan, or wireless connect) and the other one is tried ONCE as a fallback, so a stale
+        /// connection choice does not end the run. Returns false when neither transport comes up.
+        /// </summary>
+        private async Task<bool> TryConnectHardwareAsync()
+        {
+            if (_aligner.IsConnected) { return true; }
+
+            var selected = _settings.TransportMode;
+            if (await TryConnectTransportAsync(selected).ConfigureAwait(false)) { return true; }
+
+            var fallback = selected == MlastroTransportMode.Wireless
+                ? MlastroTransportMode.Serial
+                : MlastroTransportMode.Wireless;
+
+            Logger.Warning($"[MLAstro][Broker] No link over {selected}. Trying {fallback} once.");
+            return await TryConnectTransportAsync(fallback).ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryConnectTransportAsync(MlastroTransportMode transport)
+        {
+            // Ports are opened and closed on purpose while looking for the controller: a running TPPA session
+            // must not read those link changes as "the firmware link was lost".
+            _aligner.SuppressLinkLossNotification = true;
+            try
+            {
+                if (transport == MlastroTransportMode.Wireless)
+                {
+                    var wireless = MlastroWebSocketService.Instance;
+                    if (wireless == null)
+                    {
+                        Logger.Warning("[MLAstro][Broker] The wireless service is not available.");
+                        return false;
+                    }
+
+                    // A WebSocket that is up is only usable when the device answered its handshake, so the
+                    // same rule as serial applies here.
+                    var connected = await wireless.ConnectAsync().ConfigureAwait(false)
+                                    && await _aligner.SendHandshakeAsync().ConfigureAwait(false);
+                    if (connected)
+                    {
+                        // Keep the profile in step with the link that really came up.
+                        _settings.TransportMode = MlastroTransportMode.Wireless;
+                        return true;
+                    }
+
+                    if (_aligner.IsConnected) { _aligner.Disconnect(); }
+                    return false;
+                }
+
+                // Serial: every candidate port is opened and greeted exactly once - the connect itself sends
+                // the handshake, so the port that answers is the controller. No separate scan probe, which
+                // would greet the device a second time. Stored port first, then what the OS lists.
+                var candidates = new List<string>();
+                if (!string.IsNullOrWhiteSpace(_settings.ComPort))
+                {
+                    candidates.Add(_settings.ComPort);
+                }
+
+                foreach (var enumerated in _aligner.AvailablePorts)
+                {
+                    if (!candidates.Contains(enumerated, StringComparer.OrdinalIgnoreCase))
+                    {
+                        candidates.Add(enumerated);
+                    }
+                }
+
+                foreach (var candidate in candidates)
+                {
+                    if (!await _aligner.ConnectSerialAsync(candidate, _settings.BaudRate).ConfigureAwait(false))
+                    {
+                        continue;
+                    }
+
+                    if (await _aligner.WaitForHandshakeAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false))
+                    {
+                        _settings.TransportMode = MlastroTransportMode.Serial;
+                        return true;
+                    }
+
+                    // The port opened but the controller did not answer: not our device, try the next one.
+                    Logger.Warning($"[MLAstro][Broker] {candidate} opened but the controller did not answer.");
+                    _aligner.Disconnect();
+                }
+
+                Logger.Warning("[MLAstro][Broker] No controller answered on any COM port.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[MLAstro][Broker] Connecting over {transport} failed: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _aligner.SuppressLinkLossNotification = false;
+            }
+        }
+
+        /// <summary>
+        /// Tells TPPA whether the axes can be handed over right now. The controller is the only side that
+        /// sees the hardware, so the answer travels on the existing ControllerReady message: TPPA caches it
+        /// and reads it again at the hand-over prompt and when the operator presses RESUME.
+        /// </summary>
+        private async Task PublishReadinessAsync(string sessionId, string activeSessionId)
+        {
+            var ready = _aligner.IsHardwareReady;
+            var status = _aligner.DeviceStatus;
+            var note = ready
+                ? null
+                : _aligner.IsConnected
+                    ? $"hardware busy (STATUS: {status})"
+                    : "no hardware link";
 
             await _client.PublishAsync(BridgeKind.ControllerReady,
-                                       sessionId,
+                                       string.IsNullOrWhiteSpace(sessionId) ? activeSessionId : sessionId,
                                        new ControllerReadyPayload
                                        {
                                            Controller = BridgeContract.ControllerName,
                                            ControllerVersion = typeof(BridgeRunner).Assembly.GetName().Version?.ToString(),
-                                           HardwareReady = true,
-                                           LinkPath = _aligner.LinkDescription
+                                           HardwareConnected = _aligner.IsConnected,
+                                           HardwareReady = ready,
+                                           LinkPath = _aligner.LinkDescription,
+                                           Note = note
                                        }).ConfigureAwait(false);
 
-            OnSessionStarted();
+            Logger.Info($"[MLAstro][Broker] Readiness reported to TPPA: hardwareReady={ready}, status={status}");
+        }
+
+        private void OnAlignerReadinessChanged(object sender, EventArgs e)
+        {
+            if (!IsSessionRunning)
+            {
+                return;
+            }
+
+            var sessionId = SessionId;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await PublishReadinessAsync(sessionId, sessionId).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[MLAstro][Broker] Failed to report readiness to TPPA: {ex.Message}");
+                }
+            });
         }
 
         private void OnSessionStarted()

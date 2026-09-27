@@ -412,6 +412,35 @@ namespace MLAstroRPA.Services
         public bool IsConnected => _serialPort?.IsOpen == true || WirelessActive;
 
         /// <summary>
+        /// Last telemetry parsed from the firmware (serial or wireless), or null before the first '?' reply.
+        /// Cached so the broker side can read the device state without subscribing to the UI pipeline.
+        /// </summary>
+        public TelemetryData? LastTelemetry { get; private set; }
+
+        /// <summary>Firmware STATUS token of the last telemetry ("READY", "MOVING", "ALIGNING", ...) - empty while unknown.</summary>
+        public string DeviceStatus => LastTelemetry?.Status ?? string.Empty;
+
+        /// <summary>
+        /// True when the axes are idle so another controller (TPPA) may take over: the link is up and the
+        /// firmware reports READY. An unknown status counts as ready, so a missing poll never blocks a run.
+        /// </summary>
+        public bool IsDeviceIdle
+        {
+            get
+            {
+                var status = DeviceStatus;
+                return IsConnected
+                       && (string.IsNullOrWhiteSpace(status) || status.Equals("READY", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        /// <summary>
+        /// Set by the broker while it deliberately opens and closes ports to find the controller. The link
+        /// changes of that phase are on purpose, so they must not be reported as a lost link to a TPPA session.
+        /// </summary>
+        public bool SuppressLinkLossNotification { get; set; }
+
+        /// <summary>
         /// Route currently used to talk to the device (used by the HeaderBar):
         ///   "AP"  = wireless, the firmware reports this WS session arriving through the ESP32 hotspot;
         ///   "STA" = wireless, through the router the ESP32 joined;
@@ -870,7 +899,12 @@ namespace MLAstroRPA.Services
             public string FriendlyName { get; }
         }
 
-        public async Task<bool> ConnectAsync(string portName, int baudRate)
+        /// <summary>
+        /// Opens the port and, unless <paramref name="sendHandshake"/> is false, greets the firmware right
+        /// away. A caller that already verified the port (a scan probe) passes false and sends the handshake
+        /// itself, so the device is never greeted twice for one connect.
+        /// </summary>
+        public async Task<bool> ConnectAsync(string portName, int baudRate, bool sendHandshake = true)
         {
             if (string.IsNullOrWhiteSpace(portName))
             {
@@ -953,7 +987,11 @@ namespace MLAstroRPA.Services
                 PauseQueryGlobal = false;
                 StartConnectionCheckTimer();
                 StartDeviceChangeWatcher();
-                _ = StartHandshakeAndConnectionChecksAsync();
+                if (sendHandshake)
+                {
+                    _ = StartHandshakeAndConnectionChecksAsync();
+                }
+
                 RaiseExternalState(true);
                 return true;
             }
@@ -2141,6 +2179,8 @@ namespace MLAstroRPA.Services
                             var telemetryData = ParseTelemetryLine(telemetryLine);
                             if (telemetryData != null)
                             {
+                                // Kept for the broker side: it reads the device STATUS from here (ready/busy).
+                                LastTelemetry = telemetryData;
                                 Logger.Info($"[MLAstro] Telemetry parsed - Status: {telemetryData.Status}, AzPos: {telemetryData.AzPosition}, AltPos: {telemetryData.AltPosition}");
                                 InvokeOnUiThread(() => TelemetryDataReceived?.Invoke(this, new TelemetryDataEventArgs(telemetryData)));
                             }

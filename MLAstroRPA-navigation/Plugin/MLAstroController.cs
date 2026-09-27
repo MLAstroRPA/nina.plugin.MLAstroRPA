@@ -56,7 +56,43 @@ namespace MLAstroRPA.Plugin
         // MlastroWebSocketService.Instance for both the UI and the TPPA driver (the firmware allows one WS client).
         private readonly MlastroWebSocketService _webSocketService;
 
+        /// <summary>
+        /// True while the firmware link is up. Tracked so a TPPA session is only aborted on a real
+        /// connected-to-lost transition: the services also raise property changes while they are down (a
+        /// failed connect or a port scan right at session start) and those must not become "link lost".
+        /// </summary>
+        private bool _linkWasConnected;
+
         public PluginSettings Settings { get; }
+
+        /// <summary>
+        /// Aborts a running TPPA session when the firmware link the session was using disappeared. A link
+        /// that was never up is not a loss: the session start reports its own fault when neither transport
+        /// can be brought up.
+        /// </summary>
+        private void AbortSessionIfLinkJustLost(string detail)
+        {
+            if (_serialConnectionService.SuppressLinkLossNotification)
+            {
+                // The broker is switching ports on purpose (looking for the controller): not a loss.
+                _linkWasConnected = false;
+                return;
+            }
+
+            if (_serialConnectionService.IsConnected || _webSocketService.IsConnected)
+            {
+                _linkWasConnected = true;
+                return;
+            }
+
+            if (!_linkWasConnected)
+            {
+                return;
+            }
+
+            _linkWasConnected = false;
+            AbortSessionForHardware(BridgeReason.FirmwareDisconnected, detail);
+        }
 
         public PolarAlignmentDockVM PolarAlignmentVM => _polarAlignmentDockVM;
 
@@ -924,11 +960,8 @@ namespace MLAstroRPA.Plugin
             {
                 // Wireless link lost during a TPPA session: like a lost serial link the axes cannot be
                 // driven any more, so TPPA is asked to cancel instead of waiting for a measurement that
-                // will never arrive.
-                if (!_webSocketService.IsConnected)
-                {
-                    AbortSessionForHardware(BridgeReason.FirmwareDisconnected, "Firmware link lost (wireless)");
-                }
+                // will never arrive. A wireless service that was down all along is not a loss.
+                AbortSessionIfLinkJustLost("Firmware link lost (wireless)");
 
                 try
                 {
@@ -1755,11 +1788,9 @@ namespace MLAstroRPA.Plugin
                 || e.PropertyName == nameof(SerialConnectionService.IsConnected))
             {
                 // Firmware link lost during a TPPA session: the axes can no longer be driven, so TPPA is
-                // asked to cancel instead of waiting for another measurement.
-                if (!_serialConnectionService.IsConnected)
-                {
-                    AbortSessionForHardware(BridgeReason.FirmwareDisconnected, "Firmware link lost");
-                }
+                // asked to cancel instead of waiting for another measurement. A link that was never up is
+                // not a loss - the session start reports that on its own.
+                AbortSessionIfLinkJustLost("Firmware link lost");
             }
 
             if (string.IsNullOrEmpty(e.PropertyName)

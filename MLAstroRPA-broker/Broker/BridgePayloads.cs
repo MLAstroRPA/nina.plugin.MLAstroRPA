@@ -50,7 +50,13 @@ namespace MLAstroRPA.Broker
     {
         public string Controller { get; set; }
         public string ControllerVersion { get; set; }
+
+        /// <summary>True while the hardware link (serial or wireless) is up - the axes may still be busy.</summary>
+        public bool HardwareConnected { get; set; }
+
+        /// <summary>True when the axes are idle and the correction can be handed over.</summary>
         public bool HardwareReady { get; set; }
+
         public string LinkPath { get; set; }
         public string Note { get; set; }
     }

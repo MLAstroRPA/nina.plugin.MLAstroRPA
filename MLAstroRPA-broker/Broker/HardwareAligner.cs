@@ -26,12 +26,87 @@ namespace MLAstroRPA.Broker
         {
             _serial = serial ?? throw new ArgumentNullException(nameof(serial));
             _serial.CompletionReceived += OnCompletionReceived;
+            _serial.TelemetryDataReceived += OnTelemetryDataReceived;
         }
 
         /// <summary>True when the hardware link is up (serial or wireless).</summary>
         public bool IsConnected => _serial.IsConnected;
 
         public string LinkDescription => _serial.ConnectionStatus;
+
+        /// <summary>Known COM ports - used when the stored port does not answer.</summary>
+        public string[] AvailablePorts => _serial.AvailablePorts;
+
+        /// <summary>
+        /// True when the axes are idle so TPPA may take over: the link is up and the firmware reports READY.
+        /// An unknown status counts as ready so a missing poll never blocks a run.
+        /// </summary>
+        public bool IsHardwareReady => _serial.IsDeviceIdle;
+
+        /// <summary>Firmware STATUS token of the last telemetry ("READY", "MOVING", …), empty while unknown.</summary>
+        public string DeviceStatus => _serial.DeviceStatus;
+
+        /// <summary>Probes the COM ports for the controller - used when a session needs the hardware and the link is down.</summary>
+        public string ScanForDeviceComPort() => _serial.ScanForDeviceComPort();
+
+        /// <summary>Opens the serial link on the given port (the caller owns the transport decision).</summary>
+        public Task<bool> ConnectSerialAsync(string portName, int baudRate, bool sendHandshake = true)
+            => _serial.ConnectAsync(portName, baudRate, sendHandshake);
+
+        /// <summary>Sends the handshake and reports whether the firmware answered - the only proof that the right device is on the port.</summary>
+        public Task<bool> SendHandshakeAsync() => _serial.SendHandshakeAsync();
+
+        /// <summary>Closes the current link (used to drop a port that opened but did not answer).</summary>
+        public void Disconnect() => _serial.Disconnect();
+
+        /// <summary>
+        /// Suppresses "link lost" reporting while ports are opened and closed on purpose (see
+        /// <see cref="SerialConnectionService.SuppressLinkLossNotification"/>).
+        /// </summary>
+        public bool SuppressLinkLossNotification
+        {
+            get => _serial.SuppressLinkLossNotification;
+            set => _serial.SuppressLinkLossNotification = value;
+        }
+
+        /// <summary>
+        /// Waits for the handshake the connect started to be answered. A COM port that opens but has no
+        /// controller behind it never reports "OK!", which is how a wrong port is told apart from the right
+        /// one - without sending a second handshake that would race with the first.
+        /// </summary>
+        public async Task<bool> WaitForHandshakeAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (IsHandshakeOk) { return true; }
+                await Task.Delay(150).ConfigureAwait(false);
+            }
+
+            return IsHandshakeOk;
+        }
+
+        private bool IsHandshakeOk => string.Equals(_serial.HandshakeStatus, "OK!", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Raised whenever <see cref="IsHardwareReady"/> changes, so the session can tell TPPA that the
+        /// controller became ready or went busy instead of waiting for the next hand-over.
+        /// </summary>
+        public event EventHandler ReadinessChanged;
+
+        private bool lastReadiness;
+
+        private void OnTelemetryDataReceived(object sender, TelemetryDataEventArgs e)
+        {
+            var ready = IsHardwareReady;
+            if (ready == lastReadiness)
+            {
+                return;
+            }
+
+            lastReadiness = ready;
+            ReadinessChanged?.Invoke(this, EventArgs.Empty);
+        }
 
         /// <summary>
         /// Moves the axes according to the plan and waits until the firmware reports the move as
