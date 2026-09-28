@@ -527,6 +527,7 @@ namespace MLAstroRPA.Broker
             if (_aligner.IsConnected) { return true; }
 
             var selected = _settings.TransportMode;
+            SetStatus($"Connecting over {selected}...");
             if (await TryConnectTransportAsync(selected).ConfigureAwait(false)) { return true; }
 
             var fallback = selected == MlastroTransportMode.Wireless
@@ -534,6 +535,7 @@ namespace MLAstroRPA.Broker
                 : MlastroTransportMode.Wireless;
 
             Logger.Warning($"[MLAstro][Broker] No link over {selected}. Trying {fallback} once.");
+            SetStatus($"No link over {selected} - trying {fallback} once...");
             return await TryConnectTransportAsync(fallback).ConfigureAwait(false);
         }
 
@@ -587,6 +589,7 @@ namespace MLAstroRPA.Broker
 
                 foreach (var candidate in candidates)
                 {
+                    SetStatus($"Scanning the COM ports: trying {candidate}...");
                     if (!await _aligner.ConnectSerialAsync(candidate, _settings.BaudRate).ConfigureAwait(false))
                     {
                         continue;
