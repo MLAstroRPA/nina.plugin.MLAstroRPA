@@ -77,6 +77,13 @@ namespace MLAstroRPA.Broker
         private bool _resumeNeedsMeasurement;
         private bool _stopping;
 
+        /// <summary>
+        /// True once the hardware link was looked for in this session. TPPA heartbeats the
+        /// "reference sweep finished" state while the hand-over prompt is open, so without this a failed
+        /// connect would restart the whole COM-port scan again and again.
+        /// </summary>
+        private bool _hardwareConnectAttempted;
+
         /// <summary>True while TPPA reported that the operator paused the run.</summary>
         private bool IsPaused
         {
@@ -438,6 +445,14 @@ namespace MLAstroRPA.Broker
                 // The three reference points are measured: only now are the axes needed. A controller that
                 // is still offline brings its hardware up here (selected transport, then the other one
                 // once) and reports the result - that report is what TPPA checks before the hand-over.
+                if (_hardwareConnectAttempted)
+                {
+                    // Already looked for the controller in this session: a repeated sweep-finished
+                    // heartbeat must not start another scan (the failure was already reported).
+                    return;
+                }
+
+                _hardwareConnectAttempted = true;
                 Logger.Info($"[MLAstro][Broker] TPPA finished the reference sweep. Hardware connected: {_aligner.IsConnected}.");
                 SetStatus("Connecting the hardware...");
 
@@ -1038,6 +1053,7 @@ namespace MLAstroRPA.Broker
                 _paused = false;
                 _resumeNeedsMeasurement = false;
                 _stopping = false;
+                _hardwareConnectAttempted = false;
                 _previousTotalErrorArcMin = 0;
                 _worseningStreak = 0;
             }
