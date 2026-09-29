@@ -629,6 +629,17 @@ namespace MLAstroRPA.Plugin
             }
         }
 
+        /// <summary>Seconds the bridge waits after a move before it asks TPPA for the next measurement (0 = straight away).</summary>
+        public double AutomatedAdjustmentSettleTime
+        {
+            get => Settings.AutomatedAdjustmentSettleTime;
+            set
+            {
+                Settings.AutomatedAdjustmentSettleTime = Math.Max(0, Math.Min(60, value));
+                OnPropertyChanged();
+            }
+        }
+
         public double CorrectionMaxStepArcMin
         {
             get => Settings.CorrectionMaxStepArcMin;

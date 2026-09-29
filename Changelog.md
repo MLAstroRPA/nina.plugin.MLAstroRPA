@@ -3,10 +3,13 @@
 ## 3.1.1.0 — 2026-09-27
 
 ### Added — the controller announces its hardware readiness (firmware STATUS token) on `ControllerReady`, when the TPPA session opens and again whenever the axes go busy or ready, so TPPA can check the controller before the hand-over
+### Added — a firmware driver error or warning during a TPPA session publishes `Cancel` (after a ~1 s collection delay, so every code of the same incident travels in one human-readable note), instead of letting TPPA keep measuring on hardware that reported a problem
+### Added — SOFTWARE SETTING: "Automated adjustment settle time (s)" — after every correction move the bridge waits that long before it asks TPPA for the next measurement (the firmware reports the move as completed, but the axis still has to settle); 0 measures straight away
 ### Added — the readiness report also carries `HardwareConnected`, so TPPA can tell "no link to the hardware" apart from "connected but the axes are busy"
 ### Added — when TPPA reports that the three reference points are finished while the hardware link is down, the controller tries the selected transport first (serial scan or wireless connect) and the other transport once as a fallback, then reports readiness or a fault
 ### Fixed — the hardware link is looked for once per session: a failed connect no longer restarts the COM-port scan every time TPPA heartbeats the "reference sweep finished" state
 ### Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
+### Fixed — a soft-limit cancellation now carries the manual recovery steps in the note TPPA shows: press RETURN TO HOME, turn the tripod base by hand while PA keeps measuring, then assign MLAstro again
 
 ## 3.1.0.0 — 2026-09-27
 

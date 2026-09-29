@@ -507,6 +507,17 @@ namespace MLAstroRPA.Settings
             set => SetDouble(value);
         }
 
+        /// <summary>
+        /// Seconds the controller waits after a correction move before it asks TPPA for the next measurement,
+        /// so the axis can settle even though the firmware already reported the move as completed. 0 = ask
+        /// for the measurement straight away. Harmless for a run without the bridge.
+        /// </summary>
+        public double AutomatedAdjustmentSettleTime
+        {
+            get => GetDouble(nameof(AutomatedAdjustmentSettleTime), 3);
+            set => SetDouble(value);
+        }
+
         /// <summary>Overshoot: deliberately travel past the target so the next measurement corrects the remainder.</summary>
         public bool CorrectionOvershootEnabled
         {

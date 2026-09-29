@@ -114,6 +114,10 @@ namespace MLAstroRPA.Broker
             // TPPA asks for this controller's readiness before it hands the correction over, so a busy
             // controller has to announce that as soon as the axes go busy or idle again.
             _aligner.ReadinessChanged += OnAlignerReadinessChanged;
+
+            // A firmware error or warning during a session cancels it immediately instead of letting TPPA
+            // measure on hardware that reported a problem.
+            _aligner.DriverErrorStateChanged += OnDriverErrorStateChanged;
         }
 
         /// <summary>Raised whenever <see cref="StatusText"/> changes.</summary>
@@ -161,8 +165,8 @@ namespace MLAstroRPA.Broker
             Logger.Info("[MLAstro][Broker] External correction runner stopped.");
         }
 
-        /// <summary>Aborts a running session on purpose (user pressed Stop on the MLAstro side).</summary>
-        public async Task AbortSessionAsync(string reason)
+        /// <summary>Aborts a running session on purpose (user pressed Stop, or the firmware reported an error).</summary>
+        public async Task AbortSessionAsync(string reason, string note = null)
         {
             BridgeEnvelope sessionEnvelope;
             lock (_gate)
@@ -175,7 +179,7 @@ namespace MLAstroRPA.Broker
                                                         null,
                                                         0,
                                                         BridgeContract.BridgeRecipient,
-                                                        new ControllerCancelPayload { Reason = reason });
+                                                        new ControllerCancelPayload { Reason = reason, Note = note });
             }
 
             // STOP first, cancel second: the axes must be told to stop before the session token is
@@ -194,6 +198,140 @@ namespace MLAstroRPA.Broker
 
             SetStatus("Idle");
         }
+
+        /// <summary>Codes of the incident being collected before the cancel is published.</summary>
+        private readonly Dictionary<string, int> _pendingDriverErrorCodes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>1 while a cancel waits for the remaining codes of the same incident.</summary>
+        private int _driverErrorCancelPending;
+
+        /// <summary>True while the firmware-error cancel is armed (its codes are still being collected).</summary>
+        private bool IsDriverErrorCancelArmed => Volatile.Read(ref _driverErrorCancelPending) == 1;
+
+        /// <summary>
+        /// The firmware clears the "command refused" bits of its ERROR telemetry about 1.5 s after the refusal and
+        /// one align leg can be refused before the other, so the cancel waits this long to collect every code of
+        /// the same incident (both axes out of soft limit end up in ONE note instead of only the first one).
+        /// </summary>
+        private const int DriverErrorCollectMilliseconds = 1000;
+
+        /// <summary>
+        /// The firmware reported a driver error or warning while a session is running: TPPA is told to cancel,
+        /// because the correction cannot be trusted once the hardware is in an error state. The cancel is armed
+        /// here and published a moment later, so all codes of the incident travel in one note.
+        /// </summary>
+        private void OnDriverErrorStateChanged(object sender, DriverErrorState state)
+        {
+            if (state == null || state.IsClean || !IsSessionRunning) { return; }
+
+            bool arm;
+            lock (_pendingDriverErrorCodes)
+            {
+                foreach (var kv in state.Codes.Where(kv => kv.Value != 0))
+                {
+                    _pendingDriverErrorCodes[kv.Key] = kv.Value;
+                }
+
+                arm = Interlocked.Exchange(ref _driverErrorCancelPending, 1) == 0;
+            }
+
+            if (!arm)
+            {
+                // The cancel of this incident is already armed: it reads this code from the collected set.
+                return;
+            }
+
+            SetStatus("Firmware error - cancelling...");
+            _ = Task.Run(CancelAfterDriverErrorAsync);
+        }
+
+        /// <summary>
+        /// Waits <see cref="DriverErrorCollectMilliseconds"/> so every code of the incident is in, then publishes
+        /// the cancel with the collected codes.
+        /// </summary>
+        private async Task CancelAfterDriverErrorAsync()
+        {
+            try
+            {
+                await Task.Delay(DriverErrorCollectMilliseconds).ConfigureAwait(false);
+
+                DriverErrorState collected;
+                lock (_pendingDriverErrorCodes)
+                {
+                    collected = new DriverErrorState(new Dictionary<string, int>(_pendingDriverErrorCodes, StringComparer.OrdinalIgnoreCase));
+                    _pendingDriverErrorCodes.Clear();
+                    Interlocked.Exchange(ref _driverErrorCancelPending, 0);
+                }
+
+                var summary = DescribeActiveCodes(collected);
+                var note = DescribeDriverNote(collected, summary);
+                Logger.Error($"[MLAstro][Broker] The firmware reported an error during the session: {summary}" +
+                             $" [{DescribeCodeTokens(collected)}]");
+                // The status line is a single row, so the bullet list of the toast is flattened there.
+                SetStatus($"Firmware error - cancelling: {summary.Replace(Environment.NewLine, " | ")}");
+                await AbortSessionAsync(BridgeReason.ControllerFault, note).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[MLAstro][Broker] Failed to cancel the session after a firmware error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Human-readable form of the active codes, one bullet per line and without the raw telemetry tokens:
+        /// TPPA prints this text in its toast, so it has to read as a list ("- ALT align target out of soft limit").
+        /// </summary>
+        private static string DescribeActiveCodes(DriverErrorState state)
+        {
+            var active = state.Codes
+                              .Where(kv => kv.Value != 0)
+                              .Select(kv => "- " + DriverErrorState.Describe(kv.Key))
+                              .Distinct()
+                              .ToArray();
+
+            return active.Length == 0 ? "the firmware reported a driver error" : string.Join(Environment.NewLine, active);
+        }
+
+        /// <summary>The raw telemetry tokens, for the log only (the toast stays human-readable).</summary>
+        private static string DescribeCodeTokens(DriverErrorState state) =>
+            string.Join(",",
+                        state.Codes.Where(kv => kv.Value != 0)
+                                   .Select(kv => $"{kv.Key}={kv.Value}"));
+
+        /// <summary>
+        /// Note that travels with the cancel. The manual recovery steps belong to the soft-limit procedure, so
+        /// they are only attached when the stop was caused by soft limits AND nothing else: with any other code
+        /// in the list there is a real hardware problem, and walking the operator to the tripod while an axis is
+        /// not even answering would be wrong advice - the note then stays a plain list of what the firmware saw.
+        /// </summary>
+        private static string DescribeDriverNote(DriverErrorState state, string summary)
+        {
+            var active = state.Codes.Where(kv => kv.Value != 0).Select(kv => kv.Key).ToArray();
+            var softLimitOnly = active.Length > 0 && active.All(IsSoftLimitCode);
+            return softLimitOnly ? summary + Environment.NewLine + SoftLimitRecovery : summary;
+        }
+
+        private static bool IsSoftLimitCode(string code) => code switch
+        {
+            "AzSL" => true,     // AZ soft limit reached
+            "AlSL" => true,     // ALT soft limit reached
+            "RfRelAz" => true,  // AZ relative move refused
+            "RfRelAl" => true,  // ALT relative move refused
+            "RfAlnAz" => true,  // AZ align target out of limit
+            "RfAlnAl" => true,  // ALT align target out of limit
+            "RfAlnOv" => true,  // ALT align overshoot leg out of limit
+            "RfJogAz" => true,  // AZ jog refused
+            "RfJogAl" => true,  // ALT jog refused
+            _ => false
+        };
+
+        /// <summary>Manual recovery for a soft-limit stop, as defined by the hardware procedure.</summary>
+        private static string SoftLimitRecovery =>
+            string.Join(Environment.NewLine,
+                        "Soft limit - recover by hand:",
+                        "1) Press RETURN TO HOME on MLAstro plugin and wait for the mount to re-centre.",
+                        "2) Turn the tripod base by hand towards a smaller error while PA keeps measuring (without Assign MLAstro plugin).",
+                        "3) When the error is inside the soft-limit range, assign MLAstro again so it can refine automatically.");
 
         // ===== inbound =====
 
@@ -895,6 +1033,15 @@ namespace MLAstroRPA.Broker
                     return;
                 }
 
+                if (IsDriverErrorCancelArmed)
+                {
+                    // The firmware refused the move AND reported why: the armed error cancel publishes that
+                    // reason (with the recovery steps) a moment from now. Raising the generic "move did not
+                    // complete" fault here would win the race and hide the real cause from the operator.
+                    Logger.Info($"[MLAstro][Broker] The alignment move {_moveCounter} failed while a firmware error was being collected: leaving the cancel to the error handler.");
+                    return;
+                }
+
                 await PublishFaultAndEndAsync(BridgeReason.ControllerFault,
                                               $"The alignment move {_moveCounter} did not complete on the hardware.")
                              .ConfigureAwait(false);
@@ -907,6 +1054,16 @@ namespace MLAstroRPA.Broker
 
             StopKeepAlive();
             ClearWindow();
+
+            // The firmware reports the move as completed once the axes reached the target, but the mechanics
+            // still need a moment (backlash release, vibration). This is the settle the internal TPPA loop
+            // does after its own moves; here the controller owns the move, so it waits before measuring.
+            var settleSeconds = _settings.AutomatedAdjustmentSettleTime;
+            if (settleSeconds > 0)
+            {
+                SetStatus($"Settling {settleSeconds:0.#} s");
+                await Task.Delay(TimeSpan.FromSeconds(settleSeconds), token).ConfigureAwait(false);
+            }
 
             if (token.IsCancellationRequested) { return; }
 
@@ -1059,6 +1216,8 @@ namespace MLAstroRPA.Broker
                 _hardwareConnectAttempted = false;
                 _previousTotalErrorArcMin = 0;
                 _worseningStreak = 0;
+                // Codes collected for an error cancel never survive into the next session.
+                lock (_pendingDriverErrorCodes) { _pendingDriverErrorCodes.Clear(); }
             }
         }
 

@@ -91,6 +91,16 @@ namespace MLAstroRPA.Broker
         /// </summary>
         public event EventHandler ReadinessChanged;
 
+        /// <summary>
+        /// Raised when the firmware changes its driver error state (edge-triggered, once per error line).
+        /// A session cancels immediately when this reports an active error.
+        /// </summary>
+        public event EventHandler<DriverErrorState> DriverErrorStateChanged
+        {
+            add => _serial.ErrorStateChanged += value;
+            remove => _serial.ErrorStateChanged -= value;
+        }
+
         private bool lastReadiness;
 
         private void OnTelemetryDataReceived(object sender, TelemetryDataEventArgs e)

@@ -730,6 +730,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="6" VerticalAlignment="Center" Text="Correction axis mode" />
@@ -744,7 +745,7 @@
                                 <ComboBoxItem>Larger error axis</ComboBoxItem>
                             </ComboBox>
 
-                            <TextBlock Grid.Row="7" Margin="0,5,0,0" VerticalAlignment="Center" Text="Correction safety factor" />
+                            <TextBlock Grid.Row="7" Margin="0,5,0,0" VerticalAlignment="Center" Text="Correction factor" />
                             <TextBox Grid.Row="7"
                                      Grid.Column="1"
                                      MinWidth="80"
@@ -761,6 +762,15 @@
                                      HorizontalAlignment="Left"
                                      Text="{Binding CorrectionMaxStepArcMin, StringFormat={}{0:0.##}}"
                                      ToolTip="Upper limit for a single correction step - keeps a large error from producing a dangerous slew." />
+
+                            <TextBlock Grid.Row="9" Margin="0,5,0,0" VerticalAlignment="Center" Text="Automated adjustment settle time (s)" />
+                            <TextBox Grid.Row="9"
+                                     Grid.Column="1"
+                                     MinWidth="80"
+                                     Margin="5,5,0,0"
+                                     HorizontalAlignment="Left"
+                                     Text="{Binding AutomatedAdjustmentSettleTime, StringFormat={}{0:0.#}}"
+                                     ToolTip="Seconds the plugin waits after a correction move before it asks TPPA for the next measurement, so the axis can settle (backlash, vibration). 0 = measure straight away. Only used when the TPPA bridge drives the correction." />
 
                             <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,0">
                                 <StackPanel Orientation="Horizontal">
