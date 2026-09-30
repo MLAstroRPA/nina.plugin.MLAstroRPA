@@ -218,6 +218,38 @@ namespace MLAstroRPA.Plugin
             }
         }
 
+        /// <summary>
+        /// Refreshes the direction bindings on the UI thread: the correction loop flips a stored software reverse
+        /// direction itself (background thread) when it detects a wrong direction, and the checkboxes have to follow.
+        /// </summary>
+        private void RaiseDirectionPropertiesOnUiThread()
+        {
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(new Action(RaiseDirectionProperties));
+                }
+                else
+                {
+                    RaiseDirectionProperties();
+                }
+            }
+            catch
+            {
+                RaiseDirectionProperties();
+            }
+        }
+
+        private void RaiseDirectionProperties()
+        {
+            OnPropertyChanged(nameof(SoftwareReverseAzimuth));
+            OnPropertyChanged(nameof(SoftwareReverseAltitude));
+            OnPropertyChanged(nameof(AutoChangeDirection));
+            OnPropertyChanged(nameof(ReverseDirectionToggleEnabled));
+        }
+
         private void RaiseConnectionProperties()
         {
             OnPropertyChanged(nameof(IsSerialConnected));
@@ -723,6 +755,24 @@ namespace MLAstroRPA.Plugin
             }
         }
 
+        /// <summary>
+        /// When on, the plugin flips a software reverse direction itself after detecting a wrong direction, and
+        /// the two reverse checkboxes are locked (they are the manual equivalent of the same setting).
+        /// </summary>
+        public bool AutoChangeDirection
+        {
+            get => Settings.CorrectionAutoChangeDirection;
+            set
+            {
+                Settings.CorrectionAutoChangeDirection = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ReverseDirectionToggleEnabled));
+            }
+        }
+
+        /// <summary>The manual reverse toggles are only editable while the automatic direction change is off.</summary>
+        public bool ReverseDirectionToggleEnabled => !Settings.CorrectionAutoChangeDirection;
+
         /// <summary>Overshoot configuration warning (only shown while overshoot is on and the values are not usable).</summary>
         public string OvershootWarningText
         {
@@ -748,10 +798,22 @@ namespace MLAstroRPA.Plugin
 
         /// <summary>
         /// STOP / FORCE STOP on the dock: the axes were stopped by hand, so the TPPA session has to end
-        /// instead of waiting for measurements that will never be requested.
+        /// instead of waiting for measurements that will never be requested. While TPPA is still measuring
+        /// its three reference points nothing has been handed over yet, so the run is not cancelled - the
+        /// axes are not being driven from the bridge during that phase anyway.
         /// </summary>
         private void OnManualStopRequested(object? sender, EventArgs e)
         {
+            var runner = _bridgeRunner;
+            if (runner == null || !runner.IsSessionRunning) { return; }
+
+            if (!runner.IsCancelAllowed)
+            {
+                AppendBrokerLog("STOP ignored: TPPA has not handed the correction over yet (still measuring the reference points).");
+                Logger.Info("[MLAstro][Broker] Manual STOP ignored: the TPPA session has not reached the hand-over yet.");
+                return;
+            }
+
             AbortSessionForHardware(BridgeReason.UserStop, "STOP on the MLAstro dock");
         }
 
@@ -1775,6 +1837,14 @@ namespace MLAstroRPA.Plugin
             if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(PluginSettings.WifiPass))
             {
                 OnPropertyChanged(nameof(WifiPassDisplay));
+            }
+
+            if (string.IsNullOrEmpty(e.PropertyName)
+                || e.PropertyName == nameof(PluginSettings.SoftwareReverseAzimuth)
+                || e.PropertyName == nameof(PluginSettings.SoftwareReverseAltitude)
+                || e.PropertyName == nameof(PluginSettings.CorrectionAutoChangeDirection))
+            {
+                RaiseDirectionPropertiesOnUiThread();
             }
         }
 

@@ -27,13 +27,10 @@ namespace MLAstroRPA.Broker
         private const int MaxUnusableMeasurements = 5;
 
         /// <summary>
-        /// How many consecutive measurements may come back worse before the correction is declared to run
-        /// the wrong way and the session is stopped instead of driving the axes further off the target.
+        /// How many consecutive measurements may come back worse on one axis before the direction of that axis is
+        /// declared wrong - the plugin then changes the direction itself or cancels the session.
         /// </summary>
         private const int MaxWorseningMeasurements = 2;
-
-        /// <summary>A step counts as worse only when the error grows by this fraction of the previous one.</summary>
-        private const double WorseErrorFraction = 0.25;
 
         /// <summary>
         /// Consecutive solves inside the tolerance that TPPA has to report before this controller asks it
@@ -67,8 +64,6 @@ namespace MLAstroRPA.Broker
         private string _windowId;
         private TaskCompletionSource<BridgeAdjustmentGrant> _windowGrant;
         private BridgeMeasurement _lastMeasurement;
-        private double _previousTotalErrorArcMin;
-        private int _worseningStreak;
         private long _lastInboundTicks;
         private int _unusableMeasurements;
         private int _moveCounter;
@@ -83,6 +78,9 @@ namespace MLAstroRPA.Broker
         /// connect would restart the whole COM-port scan again and again.
         /// </summary>
         private bool _hardwareConnectAttempted;
+
+        /// <summary>1 once TPPA finished the three reference points and hands the correction over.</summary>
+        private int _handoverStarted;
 
         /// <summary>True while TPPA reported that the operator paused the run.</summary>
         private bool IsPaused
@@ -138,6 +136,16 @@ namespace MLAstroRPA.Broker
         public bool IsSessionRunning
         {
             get { lock (_gate) { return _sessionCts != null && !_sessionCts.IsCancellationRequested; } }
+        }
+
+        /// <summary>
+        /// True once TPPA has finished the three reference points and the correction is being handed over.
+        /// Before that moment the axes are still TPPA's own business and a manual STOP on the dock must not
+        /// cancel a polar alignment run that is only being prepared.
+        /// </summary>
+        public bool IsCancelAllowed
+        {
+            get { return IsSessionRunning && Volatile.Read(ref _handoverStarted) == 1; }
         }
 
         public string SessionId
@@ -617,6 +625,9 @@ namespace MLAstroRPA.Broker
                 }
 
                 SetStatus("TPPA session: controller ready");
+                // The sweep is over and the hardware is up: from here on a manual STOP on the dock may cancel
+                // the session (it is set after ResetSessionState, which clears it for a fresh session).
+                Volatile.Write(ref _handoverStarted, 1);
                 await PublishReadinessAsync(SessionId, SessionId).ConfigureAwait(false);
                 return;
             }
@@ -874,30 +885,19 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
-            var totalErrorArcMin = Math.Abs(measurement.TotalErrorArcMin);
-            if (IsCorrectionGettingWorse(measurement, totalErrorArcMin))
+            // Wrong direction is detected per axis and on the ABSOLUTE error: the sign only says which way the axis
+            // has to move, so a value climbing towards zero is an improvement, not a growing error.
+            var toleranceArcMin = Math.Max(0, measurement.ToleranceArcMin);
+            var wrongAzimuth = TrackAxisError("AZ", 0, Math.Abs(measurement.AzimuthErrorArcMin), toleranceArcMin);
+            if (wrongAzimuth != null && await HandleWrongDirectionAsync(wrongAzimuth, 0).ConfigureAwait(false))
             {
-                _worseningStreak++;
-                Logger.Warning($"[MLAstro][Broker] The correction made the error worse " +
-                               $"({_previousTotalErrorArcMin:0.##}' -> {totalErrorArcMin:0.##}'), " +
-                               $"measurement {_worseningStreak}/{MaxWorseningMeasurements}.");
-                SetStatus($"Correction running the wrong way ({_worseningStreak}/{MaxWorseningMeasurements})");
-
-                if (_worseningStreak >= MaxWorseningMeasurements)
-                {
-                    // Fail-safe: stopping is the only safe answer when moving makes things worse - a wrong
-                    // reverse flag or a reversed axis would otherwise drive the mount off with every step.
-                    await PublishFaultAndEndAsync(BridgeReason.ControllerFault,
-                                                  $"The correction made the polar error worse for {MaxWorseningMeasurements} " +
-                                                  "measurements in a row. Check the software reverse direction settings " +
-                                                  "(Reverse Azimuth / Altitude) and that the axes really move the way they should.")
-                                 .ConfigureAwait(false);
-                    return;
-                }
+                return;
             }
-            else
+
+            var wrongAltitude = TrackAxisError("ALT", 1, Math.Abs(measurement.AltitudeErrorArcMin), toleranceArcMin);
+            if (wrongAltitude != null && await HandleWrongDirectionAsync(wrongAltitude, 1).ConfigureAwait(false))
             {
-                _worseningStreak = 0;
+                return;
             }
 
             var settings = BridgeSettings.FromPluginSettings(_settings);
@@ -916,9 +916,8 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
-            // The next measurement is compared against the error this move was planned from, so the next
-            // move can be judged: better, unchanged, or worse.
-            _previousTotalErrorArcMin = totalErrorArcMin;
+            // The direction detection watches both axes themselves (see TrackAxisError), so nothing of the
+            // measured error has to be remembered here.
             SetStatus($"Adjusting: {plan.Reason}");
             await ExecutePlanAsync(measurement, plan, settings, token).ConfigureAwait(false);
         }
@@ -1110,6 +1109,7 @@ namespace MLAstroRPA.Broker
                                                MeasurementId = measurement.MeasurementId,
                                                PlannedAzimuthArcMin = plan.MoveAzimuth ? plan.AzimuthMagnitudeArcMin : (double?)null,
                                                PlannedAltitudeArcMin = plan.MoveAltitude ? plan.AltitudeMagnitudeArcMin : (double?)null,
+                                               DetectingDirection = PlanIsDetectingDirection(plan),
                                                Note = plan.Reason
                                            }).ConfigureAwait(false);
 
@@ -1214,8 +1214,17 @@ namespace MLAstroRPA.Broker
                 _resumeNeedsMeasurement = false;
                 _stopping = false;
                 _hardwareConnectAttempted = false;
-                _previousTotalErrorArcMin = 0;
-                _worseningStreak = 0;
+                // A new session is not handed over yet: a manual STOP stays ignored until the reference sweep ends.
+                Volatile.Write(ref _handoverStarted, 0);
+                // The direction detection starts from scratch in every session.
+                for (var i = 0; i < 2; i++)
+                {
+                    _axisPreviousErrorArcMin[i] = null;
+                    _axisIncreaseStreak[i] = 0;
+                    _axisAutoDirectionChanges[i] = 0;
+                    _axisDirectionConfirmed[i] = false;
+                }
+
                 // Codes collected for an error cancel never survive into the next session.
                 lock (_pendingDriverErrorCodes) { _pendingDriverErrorCodes.Clear(); }
             }
@@ -1243,8 +1252,6 @@ namespace MLAstroRPA.Broker
                 _windowGrant = null;
                 _paused = false;
                 _resumeNeedsMeasurement = false;
-                _previousTotalErrorArcMin = 0;
-                _worseningStreak = 0;
             }
 
             try { cts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -1258,17 +1265,129 @@ namespace MLAstroRPA.Broker
             try { SessionActiveChanged?.Invoke(this, active); } catch (Exception ex) { Logger.Error(ex); }
         }
 
-        /// <summary>
-        /// True when this measurement is clearly worse than the one the last move was planned from, which is
-        /// the signature of a correction that runs the wrong way (reversed axis, wrong reverse flag).
-        /// Ordinary solve noise stays below the margin and does not count as worse.
-        /// </summary>
-        private bool IsCorrectionGettingWorse(BridgeMeasurement measurement, double totalErrorArcMin)
-        {
-            if (_previousTotalErrorArcMin <= 0) { return false; }
+        /// <summary>Measured error of each axis (0 = AZ, 1 = ALT) from the previous measurement.</summary>
+        private readonly double?[] _axisPreviousErrorArcMin = new double?[2];
 
-            var grown = totalErrorArcMin - _previousTotalErrorArcMin;
-            return grown > Math.Max(2 * measurement.ToleranceArcMin, _previousTotalErrorArcMin * WorseErrorFraction);
+        /// <summary>Consecutive measurements in which that axis got worse (any improvement resets it).</summary>
+        private readonly int[] _axisIncreaseStreak = new int[2];
+
+        /// <summary>Automatic direction changes already used per axis in this session (one is allowed).</summary>
+        private readonly int[] _axisAutoDirectionChanges = new int[2];
+
+        /// <summary>
+        /// True once that axis showed an improvement after a move, which is what proves its direction: until then
+        /// the moves of that axis are the direction probe and TPPA shows "detecting direction" instead of "adjusting".
+        /// </summary>
+        private readonly bool[] _axisDirectionConfirmed = new bool[2];
+
+        /// <summary>
+        /// True while the given plan still probes a direction: it moves an axis whose direction has not been
+        /// proven by an improvement yet.
+        /// </summary>
+        private bool PlanIsDetectingDirection(CorrectionPlan plan)
+        {
+            if (plan == null) { return false; }
+            return (plan.MoveAzimuth && !_axisDirectionConfirmed[0])
+                   || (plan.MoveAltitude && !_axisDirectionConfirmed[1]);
+        }
+
+        /// <summary>
+        /// Follows one axis over the measurements, always on the ABSOLUTE error. Two consecutive measurements with a
+        /// LARGER magnitude mean the moves of that axis run the wrong way, so the axis name is returned - null while
+        /// the direction looks right (an improvement confirms it) or is not decided yet. Inside the tolerance nothing
+        /// is judged: the value is solve noise there and may sit on either side of zero.
+        /// </summary>
+        private string TrackAxisError(string axisName, int index, double errorArcMin, double toleranceArcMin)
+        {
+            var previous = _axisPreviousErrorArcMin[index];
+            _axisPreviousErrorArcMin[index] = errorArcMin;
+
+            if (errorArcMin <= toleranceArcMin)
+            {
+                // The reference is kept up to date, but a value that small never counts as "growing".
+                _axisIncreaseStreak[index] = 0;
+                return null;
+            }
+
+            if (previous.HasValue && errorArcMin > previous.Value)
+            {
+                _axisIncreaseStreak[index]++;
+                Logger.Warning($"[MLAstro][Broker] The {axisName} error grew ({previous.Value:0.##}' -> {errorArcMin:0.##}'), " +
+                               $"check {_axisIncreaseStreak[index]}/{MaxWorseningMeasurements}.");
+                SetStatus($"{axisName} error grew ({_axisIncreaseStreak[index]}/{MaxWorseningMeasurements}): {previous.Value:0.##}' -> {errorArcMin:0.##}'");
+
+                return _axisIncreaseStreak[index] >= MaxWorseningMeasurements ? axisName : null;
+            }
+
+            if (previous.HasValue && errorArcMin < previous.Value && !_axisDirectionConfirmed[index])
+            {
+                // The move made this axis better: its direction is proven from here on.
+                _axisDirectionConfirmed[index] = true;
+                Logger.Info($"[MLAstro][Broker] The {axisName} direction is confirmed ({previous.Value:0.##}' -> {errorArcMin:0.##}').");
+            }
+
+            _axisIncreaseStreak[index] = 0;
+            return null;
+        }
+
+        /// <summary>
+        /// The direction of one axis is wrong. Auto mode flips the stored software reverse direction, but only while
+        /// that axis is still probing its direction: once an improvement has confirmed the direction, a growing error
+        /// is not a direction problem any more, so nothing is flipped then. Without a flip the session is cancelled
+        /// with the matching hint. Returns true when the session was ended.
+        /// </summary>
+        private async Task<bool> HandleWrongDirectionAsync(string axisName, int index)
+        {
+            var mayFlip = _settings.CorrectionAutoChangeDirection
+                          && _axisAutoDirectionChanges[index] == 0
+                          && !_axisDirectionConfirmed[index];
+
+            if (mayFlip)
+            {
+                _axisAutoDirectionChanges[index] = 1;
+                if (index == 0)
+                {
+                    _settings.SoftwareReverseAzimuth = !_settings.SoftwareReverseAzimuth;
+                }
+                else
+                {
+                    _settings.SoftwareReverseAltitude = !_settings.SoftwareReverseAltitude;
+                }
+
+                // The new direction is unproven again, so the next moves probe it once more.
+                _axisDirectionConfirmed[index] = false;
+                _axisIncreaseStreak[index] = 0;
+                _axisPreviousErrorArcMin[index] = null;
+
+                var flipText = $"Wrong direction detected. Auto changing direction ({axisName}).";
+                Logger.Warning($"[MLAstro][Broker] {flipText}");
+                SetStatus(flipText);
+                try
+                {
+                    NINA.Core.Utility.Notification.Notification.ShowWarning(
+                        flipText + Environment.NewLine +
+                        $"The {axisName} software direction was flipped" +
+                        "The alignment continues with the new direction.",
+                        TimeSpan.FromMinutes(1));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"[MLAstro][Broker] Could not show the direction notification: {ex.Message}");
+                }
+
+                return false;
+            }
+
+            var guidance = _settings.CorrectionAutoChangeDirection
+                ? _axisDirectionConfirmed[index]
+                    ? $"The {axisName} direction was already confirmed by an improvement in this session, so it is not changed automatically. Check the axis, then run the polar alignment again."
+                    : $"The {axisName} direction was already changed once in this session and the error still grows, so a direction setting is probably not the cause."
+                : $"Change it by hand: MLAstroRPA -> SOFTWARE SETTING -> turn on \"Reverse {(index == 0 ? "Azimuth" : "Altitude")} direction (software)\", then run the polar alignment again.";
+
+            var note = $"The {axisName} polar error grew after two corrections in a row." + Environment.NewLine + guidance;
+            Logger.Error($"[MLAstro][Broker] Wrong direction detected on {axisName}: {note}");
+            await AbortSessionAsync(BridgeReason.ControllerFault, note).ConfigureAwait(false);
+            return true;
         }
 
         private async Task PublishFaultAndEndAsync(string reason, string detail)

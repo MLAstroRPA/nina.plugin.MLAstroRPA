@@ -118,6 +118,13 @@ namespace MLAstroRPA.Broker
         public string MeasurementId { get; set; }
         public double? PlannedAzimuthArcMin { get; set; }
         public double? PlannedAltitudeArcMin { get; set; }
+
+        /// <summary>
+        /// True while the move is still probing the direction of an axis (no improvement seen yet), so TPPA can
+        /// say "detecting direction" instead of "adjusting". Null/absent means a normal adjustment.
+        /// </summary>
+        public bool? DetectingDirection { get; set; }
+
         public string Note { get; set; }
     }
 

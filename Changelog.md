@@ -10,6 +10,7 @@
 ### Fixed — the hardware link is looked for once per session: a failed connect no longer restarts the COM-port scan every time TPPA heartbeats the "reference sweep finished" state
 ### Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
 ### Fixed — a soft-limit cancellation now carries the manual recovery steps in the note TPPA shows: press RETURN TO HOME, turn the tripod base by hand while PA keeps measuring, then assign MLAstro again
+### Fixed — STOP / FORCE STOP on the dock no longer cancels the TPPA session while TPPA is still measuring the three reference points (nothing is handed over yet, so the run is not ended; the broker log says the STOP was ignored) - from the hand-over until the session ends, cancelling works as before
 
 ## 3.1.0.0 — 2026-09-27
 

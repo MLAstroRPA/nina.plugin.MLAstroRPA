@@ -567,6 +567,17 @@ namespace MLAstroRPA.Settings
         }
 
         /// <summary>
+        /// When on, the plugin flips the software reverse direction itself after it detected a wrong direction
+        /// (and stores it, so the next runs keep it). While it is on, the two reverse checkboxes are locked in the
+        /// options page - they are the manual equivalent, and the plugin writes the very same settings.
+        /// </summary>
+        public bool CorrectionAutoChangeDirection
+        {
+            get => GetBool(nameof(CorrectionAutoChangeDirection), false);
+            set => SetBool(value);
+        }
+
+        /// <summary>
         /// Reverses the sign (software) of the azimuth axis: flips the direction of the moves this plugin
         /// sends during an external correction session. Nothing is written to FRAM or the firmware - this is
         /// not the "Reverse Direction" of the HARDWARE SETTING tab (that one reverses the firmware, AzRD:).

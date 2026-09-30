@@ -754,15 +754,6 @@
                                      Text="{Binding CorrectionSafetyFactor, StringFormat={}{0:0.##}}"
                                      ToolTip="Multiplied by the measured error before the move is sent (0.75 = correct 75 % of it). The altitude axis uses the full error instead when overshoot runs for that direction." />
 
-                            <TextBlock Grid.Row="8" Margin="0,5,0,0" VerticalAlignment="Center" Text="Maximum step per correction (arcmin)" />
-                            <TextBox Grid.Row="8"
-                                     Grid.Column="1"
-                                     MinWidth="80"
-                                     Margin="5,5,0,0"
-                                     HorizontalAlignment="Left"
-                                     Text="{Binding CorrectionMaxStepArcMin, StringFormat={}{0:0.##}}"
-                                     ToolTip="Upper limit for a single correction step - keeps a large error from producing a dangerous slew." />
-
                             <TextBlock Grid.Row="9" Margin="0,5,0,0" VerticalAlignment="Center" Text="Automated adjustment settle time (s)" />
                             <TextBox Grid.Row="9"
                                      Grid.Column="1"
@@ -840,23 +831,47 @@
 
                             <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,10,0,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <CheckBox IsChecked="{Binding SoftwareReverseAzimuth}"
+                                    <CheckBox IsChecked="{Binding AutoChangeDirection}"
                                               VerticalAlignment="Center"
                                               Margin="0,0,8,0"
-                                              ToolTip="Flips the azimuth (Left/Right) direction of the ALIGN commands this plugin sends during an external correction session." />
+                                              ToolTip="When a wrong direction is detected the plugin flips the direction itself and stores it, so the next runs keep it. While this is on, the two reverse checkboxes below are locked." />
+                                    <TextBlock Text="Auto change direction"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="24,6,0,0">
+                                    <CheckBox IsChecked="{Binding SoftwareReverseAzimuth}"
+                                              IsEnabled="{Binding ReverseDirectionToggleEnabled}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
+                                              ToolTip="Flips the azimuth (Left/Right) direction of the ALIGN commands this plugin sends during an external correction session. Locked while 'Auto change direction' owns the direction." />
                                     <TextBlock Text="Reverse Azimuth direction (software)"
                                                VerticalAlignment="Center"
                                                FontSize="14" />
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="24,6,0,0">
                                     <CheckBox IsChecked="{Binding SoftwareReverseAltitude}"
+                                              IsEnabled="{Binding ReverseDirectionToggleEnabled}"
                                               VerticalAlignment="Center"
                                               Margin="0,0,8,0"
-                                              ToolTip="Flips the altitude (Up/Down) direction of the ALIGN commands this plugin sends during an external correction session." />
+                                              ToolTip="Flips the altitude (Up/Down) direction of the ALIGN commands this plugin sends during an external correction session. Locked while 'Auto change direction' owns the direction." />
                                     <TextBlock Text="Reverse Altitude direction (software)"
                                                VerticalAlignment="Center"
                                                FontSize="14" />
+                                </StackPanel>
+
+                                <!-- The clamp of the direction probe belongs with the direction handling above. -->
+                                <StackPanel Orientation="Horizontal" Margin="24,6,0,0">
+                                    <TextBlock Text="Detect direction clamp (arcmin)"
+                                               VerticalAlignment="Center"
+                                               FontSize="14" />
+                                    <TextBox MinWidth="80"
+                                             Margin="8,0,0,0"
+                                             VerticalAlignment="Center"
+                                             Text="{Binding CorrectionMaxStepArcMin, StringFormat={}{0:0.##}}"
+                                             ToolTip="Upper limit for a single correction step: a larger error is corrected in steps of at most this value. The same value is the clamp of the wrong-direction detection, so a mis-set direction only travels this far before the plugin notices." />
                                 </StackPanel>
                             </StackPanel>
 
