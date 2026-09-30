@@ -75,6 +75,12 @@ namespace MLAstroRPA.Broker
         /// <summary>Hardware AzDi flag: true moves the azimuth axis to the right.</summary>
         public bool AzimuthRight { get; set; }
 
+        /// <summary>True when the axis is already inside the tolerance, so it is commanded with a zero magnitude.</summary>
+        public bool HoldAzimuth { get; set; }
+
+        /// <summary>True when the axis is already inside the tolerance, so it is commanded with a zero magnitude.</summary>
+        public bool HoldAltitude { get; set; }
+
         /// <summary>Hardware AlDi flag: true moves the altitude axis up.</summary>
         public bool AltitudeUp { get; set; }
 
@@ -135,6 +141,42 @@ namespace MLAstroRPA.Broker
 
             var azimuthError = Math.Abs(measurement.AzimuthErrorArcMin);
             var altitudeError = Math.Abs(measurement.AltitudeErrorArcMin);
+
+            // An axis that is already inside the tolerance is not corrected again: it is held at a zero
+            // magnitude and only the axis that is still outside the tolerance keeps moving, until TPPA
+            // finishes the run. Correcting a passing axis would restart the chain it has already passed.
+            if (plan.ToleranceArcMin > 0)
+            {
+                var azimuthInsideTolerance = azimuthError < plan.ToleranceArcMin;
+                var altitudeInsideTolerance = altitudeError < plan.ToleranceArcMin;
+
+                if (azimuthInsideTolerance && altitudeInsideTolerance)
+                {
+                    // Both axes are inside the tolerance while the TOTAL error is still outside it (two
+                    // small errors adding up): holding both would stall the run, so the larger one keeps
+                    // moving and the smaller one is held.
+                    if (azimuthError >= altitudeError)
+                    {
+                        altitudeError = 0;
+                        plan.HoldAltitude = true;
+                    }
+                    else
+                    {
+                        azimuthError = 0;
+                        plan.HoldAzimuth = true;
+                    }
+                }
+                else if (azimuthInsideTolerance)
+                {
+                    azimuthError = 0;
+                    plan.HoldAzimuth = true;
+                }
+                else if (altitudeInsideTolerance)
+                {
+                    altitudeError = 0;
+                    plan.HoldAltitude = true;
+                }
+            }
 
             if (settings.AxisMode == BridgeAxisMode.Auto && azimuthError > 0 && altitudeError > 0)
             {

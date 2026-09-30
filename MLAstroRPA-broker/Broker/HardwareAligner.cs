@@ -129,9 +129,10 @@ namespace MLAstroRPA.Broker
                 return false;
             }
 
-            var expectedCompletion = plan.MoveAzimuth && plan.MoveAltitude
-                ? "AAll"
-                : plan.MoveAzimuth ? "AzAN" : "AlAN";
+            // The align command is always the dual-axis one (a held axis travels as a zero magnitude), but the
+            // firmware still names the completion after the axis that really moved - the wireless path picks its
+            // token from the non-zero errors - so every align token is accepted here.
+            const string expectedCompletion = "AAll / AzAN / AlAN";
 
             var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_gate)
@@ -190,18 +191,12 @@ namespace MLAstroRPA.Broker
             // travel in the very same line as the magnitudes and the trigger - exactly like the CONTROL
             // tab does it. Sending them on their own after the trigger would move the axes with whatever
             // direction happened to be stored before.
-            if (plan.MoveAzimuth && plan.MoveAltitude)
-            {
-                return $"AzED:{azimuth.Degrees},AzEM:{azimuth.Minutes},AzES:{azimuth.Seconds},AzDi:{azimuthDirection}," +
-                       $"AlED:{altitude.Degrees},AlEM:{altitude.Minutes},AlES:{altitude.Seconds},AlDi:{altitudeDirection},AAll:1\n";
-            }
-
-            if (plan.MoveAzimuth)
-            {
-                return $"AzED:{azimuth.Degrees},AzEM:{azimuth.Minutes},AzES:{azimuth.Seconds},AzDi:{azimuthDirection},AzAN:1\n";
-            }
-
-            return $"AlED:{altitude.Degrees},AlEM:{altitude.Minutes},AlES:{altitude.Seconds},AlDi:{altitudeDirection},AlAN:1\n";
+            //
+            // ONE dual-axis command even when only one axis moves: the axis that is held (already inside the
+            // tolerance) travels as a zero magnitude instead of being left out. The firmware skips an axis
+            // whose error is zero, so a single-axis correction behaves exactly like before.
+            return $"AzED:{azimuth.Degrees},AzEM:{azimuth.Minutes},AzES:{azimuth.Seconds},AzDi:{azimuthDirection}," +
+                   $"AlED:{altitude.Degrees},AlEM:{altitude.Minutes},AlES:{altitude.Seconds},AlDi:{altitudeDirection},AAll:1\n";
         }
 
         /// <summary>Converts a magnitude in arcminutes into the degrees / minutes / seconds the firmware expects.</summary>

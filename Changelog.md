@@ -11,6 +11,10 @@
 ### Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
 ### Fixed — a soft-limit cancellation now carries the manual recovery steps in the note TPPA shows: press RETURN TO HOME, turn the tripod base by hand while PA keeps measuring, then assign MLAstro again
 ### Fixed — STOP / FORCE STOP on the dock no longer cancels the TPPA session while TPPA is still measuring the three reference points (nothing is handed over yet, so the run is not ended; the broker log says the STOP was ignored) - from the hand-over until the session ends, cancelling works as before
+### Changed — a correction no longer touches an axis that is already inside the tolerance: that axis is commanded with a zero magnitude (its stored error stays untouched) while the axis still outside the tolerance keeps correcting, until TPPA finishes the run - a passing axis is not nudged away from the tolerance it has already reached
+### Changed — the correction is always sent as ONE dual-axis ALIGN command, with the held axis travelling as a zero magnitude instead of being left out of the command
+### Changed — the wrong-direction verdict compares every measurement against the SAME reference (the error the axis had when the three reference points were solved) instead of the measurement before it, so a single noisy sample can no longer flip or cancel a direction that is already improving
+### Changed — the wrong-direction verdict reads the SIGN of the error, not its magnitude: a move that crosses the target (the overshoot leg does it on purpose) comes back with the opposite sign and confirms the direction, while a move that runs the wrong way keeps the sign of the sweep error and grows on that side; the magnitude only says whether the axis improved
 
 ## 3.1.0.0 — 2026-09-27
 
