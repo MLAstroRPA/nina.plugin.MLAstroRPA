@@ -539,20 +539,31 @@ namespace MLAstroRPA.Settings
 
         /// <summary>
         /// Turns the overshoot on when the altitude axis has to move UP. Only effective while CorrectionOvershootEnabled is on.
+        /// The direction is exclusive (radio group in the options page): setting one side clears the other.
         /// </summary>
         public bool CorrectionOvershootUpEnabled
         {
-            get => GetBool(nameof(CorrectionOvershootUpEnabled), true);
-            set => SetBool(value);
+            get => GetBool(nameof(CorrectionOvershootUpEnabled), false) && !GetBool(nameof(CorrectionOvershootDownEnabled), false);
+            set
+            {
+                SetBool(value);
+                if (value) { CorrectionOvershootDownEnabled = false; }
+            }
         }
 
         /// <summary>
         /// Turns the overshoot on when the altitude axis has to move DOWN. Only effective while CorrectionOvershootEnabled is on.
+        /// The direction is exclusive (radio group in the options page): setting one side clears the other. Settings
+        /// written before the radio group existed can hold both directions - DOWN stays the selected one then.
         /// </summary>
         public bool CorrectionOvershootDownEnabled
         {
             get => GetBool(nameof(CorrectionOvershootDownEnabled), true);
-            set => SetBool(value);
+            set
+            {
+                SetBool(value);
+                if (value) { CorrectionOvershootUpEnabled = false; }
+            }
         }
 
         /// <summary>

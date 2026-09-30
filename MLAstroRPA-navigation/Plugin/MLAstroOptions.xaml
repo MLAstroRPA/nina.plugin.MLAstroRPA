@@ -785,18 +785,19 @@
                             </StackPanel>
 
                             <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="24,5,0,0" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
-                                <CheckBox IsChecked="{Binding CorrectionOvershootUpEnabled}"
-                                          IsEnabled="{Binding CorrectionOvershootEnabled}"
-                                          VerticalAlignment="Center"
-                                          Margin="0,0,8,0"
-                                          ToolTip="Overshoot when the altitude axis has to move up. Off = the up step stops exactly on the target." />
-                                <TextBlock Text="Enable overshoot when moving up"
+                                <RadioButton IsChecked="{Binding CorrectionOvershootUpEnabled}"
+                                             GroupName="MlaRpaSoftwareOvershootDirection"
+                                             IsEnabled="{Binding CorrectionOvershootEnabled}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"
+                                             ToolTip="Overshoot when the altitude axis has to move up: the step runs past the target by the amount on the right. Only ONE direction can overshoot - picking this one clears the other." />
+                                <TextBlock Text="Overshoot when moving up"
                                            VerticalAlignment="Center"
                                            FontSize="12" />
                             </StackPanel>
                             <StackPanel Grid.Row="1" Grid.Column="1" Margin="5,5,0,0" Orientation="Horizontal" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBox MinWidth="80"
-                                         IsEnabled="{Binding CorrectionOvershootEnabled}"
+                                         IsEnabled="{Binding CorrectionOvershootUpEnabled}"
                                          Text="{Binding CorrectionOvershootUpArcMin, StringFormat={}{0:0.##}}"
                                          ToolTip="Overshoot when moving up (arcmin)." />
                                 <TextBlock Margin="6,0,0,0"
@@ -807,18 +808,19 @@
                             </StackPanel>
 
                             <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="24,6,0,0" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
-                                <CheckBox IsChecked="{Binding CorrectionOvershootDownEnabled}"
-                                          IsEnabled="{Binding CorrectionOvershootEnabled}"
-                                          VerticalAlignment="Center"
-                                          Margin="0,0,8,0"
-                                          ToolTip="Overshoot when the altitude axis has to move down. Off = the down step stops exactly on the target." />
-                                <TextBlock Text="Enable overshoot when moving down"
+                                <RadioButton IsChecked="{Binding CorrectionOvershootDownEnabled}"
+                                             GroupName="MlaRpaSoftwareOvershootDirection"
+                                             IsEnabled="{Binding CorrectionOvershootEnabled}"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"
+                                             ToolTip="Overshoot when the altitude axis has to move down: the step runs past the target by the amount on the right. Only ONE direction can overshoot - picking this one clears the other." />
+                                <TextBlock Text="Overshoot when moving down"
                                            VerticalAlignment="Center"
                                            FontSize="12" />
                             </StackPanel>
                             <StackPanel Grid.Row="2" Grid.Column="1" Margin="5,6,0,0" Orientation="Horizontal" Visibility="{Binding CorrectionOvershootEnabled, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBox MinWidth="80"
-                                         IsEnabled="{Binding CorrectionOvershootEnabled}"
+                                         IsEnabled="{Binding CorrectionOvershootDownEnabled}"
                                          Text="{Binding CorrectionOvershootDownArcMin, StringFormat={}{0:0.##}}"
                                          ToolTip="Overshoot when moving down (arcmin)." />
                                 <TextBlock Margin="6,0,0,0"

@@ -666,7 +666,9 @@ namespace MLAstroRPA.Plugin
             set
             {
                 Settings.CorrectionOvershootUpEnabled = value;
+                // The direction is exclusive, so the other radio button has to be refreshed as well.
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CorrectionOvershootDownEnabled));
             }
         }
 
@@ -677,6 +679,7 @@ namespace MLAstroRPA.Plugin
             {
                 Settings.CorrectionOvershootDownEnabled = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(CorrectionOvershootUpEnabled));
             }
         }
 
