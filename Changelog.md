@@ -3,6 +3,8 @@
 ## 3.1.2.0 — 2026-10-01
 
 ### Changed — the automated adjustment settle time is now waited on the TPPA side (sent along with the measurement request), so the wait shows up in the TPPA status bar as "Settling" exactly like the adjustment systems TPPA drives on its own, and this plugin no longer blocks its own status line with a settle text the firmware telemetry overwrote
+### Changed — an axis whose direction is already confirmed is no longer cancelled as a wrong direction: an error that keeps growing on the reference side only warns while the correction goes on, and the session is stopped after three growing measurements in a row with a note that states what was measured; the wrong-direction verdict (auto change or cancel with the manual hint) is left to an axis that is still probing its direction
+### Fixed — an axis that was not commanded by the previous step (held inside the tolerance, or a verify-only measurement) is not judged on growth any more, so an error that moves with the sky, the mount or the tripod can no longer be reported as a wrong correction direction
 
 ## 3.1.1.0 — 2026-09-27
 
