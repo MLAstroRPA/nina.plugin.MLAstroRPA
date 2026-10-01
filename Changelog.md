@@ -1,5 +1,13 @@
 ﻿# Changelog
 
+## 3.1.3.0 — 2026-10-01
+
+### Changed — the AP and STA icons in the header bar are vector drawings in the web UI style instead of emoji or glyph text, and the STA bars are graded by the live RSSI over Wireless or by the `WRs` telemetry token over Serial
+### Added — the dock locks the four arrow buttons while a relative move started there is still travelling: the lock is released when the firmware reports the motion ended, with a grace for a step that never reports motion and a 10 minute safety net
+### Added — the CONNECTION tab locks the Connect button while the wireless address is being resolved (mDNS/DNS) and releases it as soon as the resolve succeeds or fails
+### Fixed — the System log panel no longer stays frozen at the lines of the first load: switching tabs dropped the collection handler without clearing the already-bound marker, so new lines and Clear had no visible effect
+### Fixed — the wireless RSSI is forwarded to the dock as the `WRs` token and a missing reading is told apart from 0 dBm, so the signal bars grade the same over Wireless and Serial
+
 ## 3.1.2.0 — 2026-10-01
 
 ### Changed — the automated adjustment settle time is now waited on the TPPA side (sent along with the measurement request), so the wait shows up in the TPPA status bar as "Settling" exactly like the adjustment systems TPPA drives on its own, and this plugin no longer blocks its own status line with a settle text the firmware telemetry overwrote
