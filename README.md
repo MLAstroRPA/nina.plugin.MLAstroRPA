@@ -3,7 +3,7 @@
 A **NINA** plugin for the **MLAstro Robotic Polar Alignment** hardware — full control of the
 MLAstro RPA motor controller (ESP32) over **USB serial or Wi-Fi (WebSocket)**:
 
-- **Full hardware control** — soft limits, TMC2209 motor drivers (AZ/ALT), backlash & P.A overshoot,
+- **Full hardware control** — soft limits, TMC2209 motor drivers (AZ/ALT), backlash,
   WiFi (AP + Station), set home / return home, live serial terminal, save-all & reboot.
 - **Two transports** — **serial** (COM port, with "Auto scan COM port", ESP32 reset and
   auto-reconnect) or **wireless** (WebSocket over the network: hostname `MLAstroRPA.local` or the
@@ -22,7 +22,7 @@ The plugin options page is a single page with top-level tabs:
 | Tab | Content |
 | --- | --- |
 | **CONTROL** | the same view as the dock panel: jog/relative, align, positions, error readout, alarm history |
-| **HARDWARE SETTING** | soft limits, motor driver (TMC2209) AZ/ALT, backlash & P.A overshoot, WiFi configuration — needs a live link (Serial or Wireless) |
+| **HARDWARE SETTING** | soft limits, motor driver (TMC2209) AZ/ALT, backlash, WiFi configuration — needs a live link (Serial or Wireless) |
 | **SOFTWARE SETTING** | external correction over the message broker (assign switch, correction axis mode, correction factor, maximum step per correction, automated adjustment settle time, software overshoot, software reverse directions) plus the bridge status and broker log |
 | **CONNECTION** | connection type (Serial / Wireless), auto scan COM port, COM port and auto-reconnect, handshake status, pause polling, handshake timeout & polling period, wireless address, Reset ESP32, system log and the serial terminal (Hex + Send) |
 

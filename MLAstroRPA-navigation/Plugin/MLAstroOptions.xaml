@@ -501,7 +501,7 @@
                     </StackPanel>
                 </Expander>
 
-                <Expander Header="Backlash &amp; P.A Overshoot" Margin="0,0,0,15" IsExpanded="True"
+                <Expander Header="Backlash" Margin="0,0,0,15" IsExpanded="True"
                           Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource MlaRpaBoolToVis}}">
                     <StackPanel Margin="10">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -522,50 +522,6 @@
                                 <TextBox Text="{Binding Settings.BacklashAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </WrapPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,10">
-                            <CheckBox IsChecked="{Binding Settings.OvershootEnabled, Mode=TwoWay}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,8,0" />
-                            <TextBlock Text="Enable Alt P.A Overshoot on firmware"
-                                       VerticalAlignment="Center"
-                                       FontSize="14" />
-                        </StackPanel>
-                        <StackPanel Margin="24,0,0,0">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <CheckBox IsChecked="{Binding Settings.OvershootMoveUp, Mode=TwoWay}"
-                                          VerticalAlignment="Center"
-                                          Margin="0,0,8,0" />
-                                <TextBlock Text="Move up overshoot"
-                                           VerticalAlignment="Center"
-                                           FontSize="12" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <CheckBox IsChecked="{Binding Settings.OvershootMoveDown, Mode=TwoWay}"
-                                          VerticalAlignment="Center"
-                                          Margin="0,0,8,0" />
-                                <TextBlock Text="Move down overshoot"
-                                           VerticalAlignment="Center"
-                                           FontSize="12" />
-                            </StackPanel>
-                            <StackPanel Margin="0,0,0,10">
-                                <TextBlock Text="Overshoot Amount:" Margin="0,0,0,5" />
-                                <WrapPanel>
-                                    <DockPanel Width="70" Margin="0,0,10,0">
-                                        <TextBlock DockPanel.Dock="Right" Text="°" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
-                                        <TextBox Text="{Binding Settings.OvershootDegrees, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </DockPanel>
-                                    <DockPanel Width="70" Margin="0,0,10,0">
-                                        <TextBlock DockPanel.Dock="Right" Text="'" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
-                                        <TextBox Text="{Binding Settings.OvershootMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </DockPanel>
-                                    <DockPanel Width="70" Margin="0,0,10,0">
-                                        <TextBlock DockPanel.Dock="Right" Text="&quot;" FontSize="10" Foreground="Gray" VerticalAlignment="Center" Margin="2,0,0,0" />
-                                        <TextBox Text="{Binding Settings.OvershootSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </DockPanel>
-                                </WrapPanel>
-                            </StackPanel>
-                        </StackPanel>
                     </StackPanel>
                 </Expander>
 

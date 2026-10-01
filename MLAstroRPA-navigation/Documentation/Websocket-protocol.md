@@ -229,6 +229,9 @@ Immediately after a successful connection, server sends a large init snapshot:
 
 Field notes:
 
+- `backlash.overshoot*` — still reported and still accepted on write (kept for older clients), but the
+  firmware 2-leg overshoot routine was removed, so these values no longer change the motion: ALIGN always
+  travels straight to the target.
 - `serial_locked` — `true` when a PC (Serial or Wireless) owns control; Web clients are then locked to
   monitoring.
 - `role` — `master` (this client owns control) or `monitor`.

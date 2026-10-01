@@ -102,7 +102,7 @@ Tài liệu liệt kê toàn bộ text hiển thị trên trang **Options** củ
 | Notice | `⚠️ Not connected` + `Open the CONNECTION tab and connect to the MLAstro RPA hardware (Serial or Wireless) to configure device settings.` |
 | Soft Limits (Degrees) | `AZ Limits`: `AZ Min` `AZ Max` · `ALT Limits`: `ALT Min` `ALT Max` |
 | Motor Driver (TMC2209) | `AZ Motor` / `ALT Motor`; mỗi motor: `Reverse Direction`, `Run Current (mA)`, `Hold Current (mA)`, `Start-up Booster (%)`, `Soft CoolStep (%)`, `Microsteps` (1, 2, 4, 8, 16, 32, 64, 128, 256), `Accel (steps/s²)`, `Decel (steps/s²)`, `Steps/Degree`, `Mode` (`StealthChop` / `SpreadCycle`) |
-| Backlash & P.A Overshoot | `Enable Anti Backlash on firmware`, `AZ Backlash (steps)`, `ALT Backlash (steps)`, `Enable Alt P.A Overshoot on firmware`, `Move up overshoot`, `Move down overshoot`, `Overshoot Amount:` (`°` `'` `"`) |
+| Backlash | `Enable Anti Backlash on firmware`, `AZ Backlash (steps)`, `ALT Backlash (steps)` |
 | WiFi Configuration | `Access Point (Hotspot)`: `AP SSID`, `AP Password` (nút 👁), `AP IP Address`, `Subnet Mask` · `Station Mode (Connect to Router)`: `WiFi SSID`, `WiFi Password` (nút 👁), `Current STA Mode IP` |
 | Configuration Management | `💾 Configuration Management` · `⚡ APPLY SETTINGS` · `✓ SAVE ALL & REBOOT` · `⏻ REBOOT` · note `Apply sends settings to device memory without saving. Save All persists to FRAM and reboots the device.` |
 

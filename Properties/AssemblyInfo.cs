@@ -44,7 +44,7 @@ using System.Runtime.InteropServices;
 This plugin is the hardware side of the MLAstro Robotic Polar Alignment system. It talks to the
 MLAstro RPA controller over USB serial or Wi-Fi, jogs the altitude and azimuth axes by hand or by a
 set number of degrees, and shows live position, status and alarms. It also keeps the controller's own
-settings: motor drivers, soft limits, backlash, Wi-Fi and the P.A. overshoot used during a correction.
+settings: motor drivers, soft limits, backlash and Wi-Fi.
 
 The whole controller lives in four tabs: CONTROL for the jog pad, position readout and STOP / FORCE
 STOP, HARDWARE SETTING for the controller parameters, SOFTWARE SETTING for the correction options and

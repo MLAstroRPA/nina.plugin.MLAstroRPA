@@ -137,12 +137,7 @@ To prevent equipment damage in case of software crashes or disconnected cables d
 
 **Backlash Settings**
 *   `Back:X\n` : Enable/Disable Backlash Compensation (`0` = Disable, `1` = Enable).
-*   `Over:X\n` : Enable/Disable the Alt-axis 2-leg P.A Overshoot Routine (`0` = Disable, `1` = Enable). Master switch cho cả 2 chiều.
-*   `OvUp:X\n` : Enable/Disable Move up overshoot (`0` = Disable, `1` = Enable). Áp dụng khi trục Alt chạy LÊN.
-*   `OvDn:X\n` : Enable/Disable Move down overshoot (`0` = Disable, `1` = Enable). Áp dụng khi trục Alt chạy XUỐNG.
-*   `OvD:X\n` : Set Overshoot Amount Degrees (`0` to `10`). Độ vượt đích của trục Alt.
-*   `OvM:X\n` : Set Overshoot Amount Arc Minutes (`0` to `59`).
-*   `OvS:X\n` : Set Overshoot Amount Arc Seconds (`0` to `59`).
+*   `Over:X\n` / `OvUp:X\n` / `OvDn:X\n` / `OvD:X\n` / `OvM:X\n` / `OvS:X\n` : Alt-axis 2-leg P.A Overshoot settings. The firmware still **accepts and stores** them and still **reports** them in the telemetry (`Over:`, `OvUp:`, `OvDn:`, `OvD:`, `OvM:`, `OvS:`), but the overshoot routine itself was removed, so they no longer change the motion - ALIGN always travels straight to the target. Kept so older plugins keep working unchanged.
 *   `AzBl:X\n` / `AlBl:X\n` : Set Azimuth/Altitude Backlash Steps.
 
 **Network Settings (WiFi & Access Point)**
