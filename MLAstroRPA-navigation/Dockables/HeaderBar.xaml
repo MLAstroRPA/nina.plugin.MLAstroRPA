@@ -3,6 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
+        <!-- WiFi icons = VECTOR geometry (SVG-style path data), the SAME drawings as the web UI sprite - never emoji.
+             Source box is 24x24; the Paths below render them at 15 px with a 1.2 px stroke. -->
+        <Geometry x:Key="IcoWifi">M3,9.5 a14,14 0 0 1 18,0 M6.5,13.5 a9,9 0 0 1 11,0 M10,17.5 a4,4 0 0 1 4,0 M10.8,20.6 a1.2,1.2 0 1 0 2.4,0 a1.2,1.2 0 1 0 -2.4,0</Geometry>
+        <Geometry x:Key="IcoWifiOff">M3,9.5 a14,14 0 0 1 18,0 M6.5,13.5 a9,9 0 0 1 11,0 M10,17.5 a4,4 0 0 1 4,0 M4,4 L20,20</Geometry>
+        <Geometry x:Key="IcoCross">M6,6 L18,18 M18,6 L6,18</Geometry>
         <!-- Force Stop Button Style - CIRCULAR (same look as the web UI: circle in a square frame).
              NOTE: the button must stay square (54x54) because CornerRadius = half of the side = circle. -->
         <Style x:Key="ForceStopButtonStyle" TargetType="Button">
@@ -138,14 +143,25 @@
                                Foreground="#BDC3C7"
                                Margin="0,0,5,0"
                                VerticalAlignment="Center"/>
-                    <!-- AP icon (coloured emoji, it carries its own colour): green dot = THIS PC goes through the hotspot
-                         - the AP is up but the PC goes another way - cross = AP error. Foreground={ApIconBrush} only matters
-                         if the glyph is ever changed to a monochrome one. -->
-                    <TextBlock Text="{Binding ApIconGlyph}"
-                               FontSize="12" 
-                               Foreground="{Binding ApIconBrush}"
-                               Margin="0,0,4,0"
-                               VerticalAlignment="Center"/>
+                    <!-- AP icon: VECTOR wifi drawing (IcoWifi / IcoWifiOff above), coloured through ApIconBrush:
+                         green = THIS PC goes through the hotspot - blue = the AP is up but the PC goes another way -
+                         the slashed drawing in red = AP error. -->
+                    <Path Data="{StaticResource IcoWifi}"
+                          Visibility="{Binding ApWifiVisibility}"
+                          Stroke="{Binding ApIconBrush}"
+                          StrokeThickness="1.2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                          Width="15" Height="15" Stretch="Uniform"
+                          Margin="0,0,4,0"
+                          VerticalAlignment="Center"/>
+                    <Path Data="{StaticResource IcoWifiOff}"
+                          Visibility="{Binding ApWifiOffVisibility}"
+                          Stroke="{Binding ApIconBrush}"
+                          StrokeThickness="1.2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                          Width="15" Height="15" Stretch="Uniform"
+                          Margin="0,0,4,0"
+                          VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding ApStatusText}"
                                FontSize="11"
                                Foreground="#BDC3C7"
@@ -163,14 +179,38 @@
                                Foreground="#BDC3C7"
                                Margin="0,0,5,0"
                                VerticalAlignment="Center"/>
-                    <!-- STA icon: glyph by signal quality, colour by client state.
-                         A monochrome FontFamily is required - coloured emoji ignores Foreground. -->
-                    <TextBlock Text="{Binding StaIconText}"
-                               FontFamily="Segoe UI Symbol"
-                               FontSize="12" 
-                               Foreground="{Binding StaIconBrush}"
-                               Margin="0,0,5,0"
-                               VerticalAlignment="Center"/>
+                    <!-- STA icon = VECTOR shapes, the same drawings as the web UI (coloured through StaIconBrush):
+                         4 signal bars graded by the RSSI (the bars the level does not reach are dimmed to 22 %) -
+                         the plain wifi drawing while the RSSI is unknown - a cross when not joined to any router. -->
+                    <StackPanel Orientation="Horizontal" Height="12" Margin="0,0,5,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding StaBarsVisibility}"
+                                ToolTip="{Binding StaSignalToolTip}">
+                        <Rectangle Width="2.2" Height="3" RadiusX="0.8" RadiusY="0.8" Margin="0,0,1.1,0"
+                                   VerticalAlignment="Bottom" Fill="{Binding StaBar1Brush}"/>
+                        <Rectangle Width="2.2" Height="5.5" RadiusX="0.8" RadiusY="0.8" Margin="0,0,1.1,0"
+                                   VerticalAlignment="Bottom" Fill="{Binding StaBar2Brush}"/>
+                        <Rectangle Width="2.2" Height="8" RadiusX="0.8" RadiusY="0.8" Margin="0,0,1.1,0"
+                                   VerticalAlignment="Bottom" Fill="{Binding StaBar3Brush}"/>
+                        <Rectangle Width="2.2" Height="11" RadiusX="0.8" RadiusY="0.8"
+                                   VerticalAlignment="Bottom" Fill="{Binding StaBar4Brush}"/>
+                    </StackPanel>
+                    <Path Data="{StaticResource IcoWifi}"
+                          Visibility="{Binding StaWifiVisibility}"
+                          Stroke="{Binding StaIconBrush}"
+                          StrokeThickness="1.2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                          Width="15" Height="15" Stretch="Uniform"
+                          Margin="0,0,5,0" VerticalAlignment="Center"
+                          ToolTip="{Binding StaSignalToolTip}"/>
+                    <Path Data="{StaticResource IcoCross}"
+                          Visibility="{Binding StaCrossVisibility}"
+                          Stroke="{Binding StaIconBrush}"
+                          StrokeThickness="1.6"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Width="13" Height="13" Stretch="Uniform"
+                          Margin="0,0,5,0" VerticalAlignment="Center"
+                          ToolTip="{Binding StaSignalToolTip}"/>
                     <TextBlock Text="{Binding StaStatusText}"
                                FontSize="11"
                                Foreground="#BDC3C7"

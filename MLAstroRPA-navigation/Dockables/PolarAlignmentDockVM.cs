@@ -39,6 +39,18 @@ namespace MLAstroRPA.Dockables
         /// <summary>How long after the last refusal the arrow buttons unlock themselves.</summary>
         private const int JOG_UNBLOCK_DELAY_MS = 2000;
 
+        // --- Relative move sent from THIS dock (arrow buttons in Relative mode) ------------------
+        // The firmware runs a relative step as a commanded move (same class as an automatic run /
+        // return home), so the four arrow buttons are locked while it travels. The lock is released
+        // when the firmware reports the motion ended; a step that never reports motion (zero-length
+        // step / already at the target) is released after a short grace, and a hard timeout is the
+        // final safety net.
+        private bool _isRelativeMoveRunning;
+        private bool _relativeMoveSeenMotion;
+        private DateTime _relativeMoveStartedUtc;
+        private const double RELATIVE_MOVE_LOCK_GRACE_SECONDS = 1.0;   // no motion reported ⇒ unlock after this
+        private const double RELATIVE_MOVE_LOCK_MAX_SECONDS = 600;     // absolute safety net (10 min)
+
         private bool _disposed = false;
 
         // Static instance for cleanup during plugin teardown
@@ -59,19 +71,45 @@ namespace MLAstroRPA.Dockables
         private string _connectionStatusText = "Disconnected";
         private Visibility _controlsVisibility = Visibility.Collapsed;
 
-        // HeaderBar - the AP/STA line uses COLOURED EMOJI (NINA/.NET 8 renders colour emoji through Segoe UI Emoji):
-        //   AP:  <green dot> = PC goes through the hotspot (Connected) - <wireless mark> = AP is up but the PC goes another way (Ready) - <cross> = AP error
-        //   STA: the icon uses a monochrome font (XAML: Segoe UI Symbol), so it can be COLOURED:
-        //        glyph = <bars> internet - <bars+bang> router but no internet - <cross> not joined to the router;
-        //        colour = green when THIS PC goes through STA - blue when the PC goes another way
-        private string _apIconGlyph = "\u274C";
+        // HeaderBar - the AP/STA icons are VECTOR shapes (SVG-style geometry declared in HeaderBar.xaml, the same
+        // drawings the web UI uses), never emoji or glyph text:
+        //   AP:  3-arc wifi path = the AP is up (green = THIS PC goes through the hotspot, blue = the PC goes another
+        //        way) - the same drawing with a slash, in red = AP error.
+        //   STA: 4 filled bars graded by RSSI (the bars not reached are dimmed to 22 %) - the plain wifi path while
+        //        the RSSI is unknown - a cross when the device is not joined to any router.
         private string _apStatusText = string.Empty;   // IP of the AP (or "-" while unknown)
         private bool _apReady;
         private string _apIp = string.Empty;
-        private string _staIconText = "\u274C";
-        // Per-line icon colour (it only applies to a monochrome text glyph - coloured emoji ignores Foreground).
         private Brush _apIconBrush = Brushes.Gray;
         private Brush _staIconBrush = Brushes.Gray;
+        private Visibility _apWifiVisibility = Visibility.Collapsed;
+        private Visibility _apWifiOffVisibility = Visibility.Collapsed;
+        private Visibility _staBarsVisibility = Visibility.Collapsed;
+        private Visibility _staWifiVisibility = Visibility.Collapsed;
+        private Visibility _staCrossVisibility = Visibility.Visible;
+        private Brush _staBar1Brush = StaBarDimBrush;
+        private Brush _staBar2Brush = StaBarDimBrush;
+        private Brush _staBar3Brush = StaBarDimBrush;
+        private Brush _staBar4Brush = StaBarDimBrush;
+        private string _staSignalToolTip = "Not joined any router";
+        // Last RSSI reported by the firmware. It is kept while a frame carries no reading (the simplified telemetry
+        // frame sent while the motors run, or a device without the WRs token) so the bars do not flicker.
+        private int _lastStaRssi = -1000;
+
+        /// <summary>Bars the RSSI level does not reach: #BDC3C7 at 22 % (same look as the web UI).</summary>
+        private static readonly Brush StaBarDimBrush = CreateFrozenBrush(56, 189, 195, 199);
+
+        /// <summary>
+        /// Creates a FROZEN solid brush. Freezing is required: a Freezable created on a non-UI thread must be
+        /// frozen before WPF uses it as a DependencyProperty value, otherwise NINA dies with
+        /// "Must create DependencySource on same Thread as the DependencyObject".
+        /// </summary>
+        private static Brush CreateFrozenBrush(byte a, byte r, byte g, byte b)
+        {
+            var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+            brush.Freeze();
+            return brush;
+        }
 
         private string _staStatusText = "none";
 
@@ -272,8 +310,8 @@ namespace MLAstroRPA.Dockables
 
         /// <summary>
         /// The "STA: <icon> IP" line: the text is the LAN IP the router gave the ESP32.
-        /// The network icon (3 Paths in the HeaderBar) follows StaIcon*Visibility:
-        /// a slash = not joined to the router, a bang = router but no internet, plain = internet.
+        /// The icon is drawn as vector shapes in the HeaderBar and follows the StaBars / StaWifi / StaCross
+        /// visibility (4 bars graded by RSSI - plain wifi while the RSSI is unknown - cross when not joined).
         /// </summary>
         public string StaStatusText
         {
@@ -281,18 +319,74 @@ namespace MLAstroRPA.Dockables
             private set => SetProperty(ref _staStatusText, value);
         }
 
-        /// <summary>AP line icon: <wireless mark> (PC goes through the hotspot) - <green dot> (AP up, another route) - <cross> (AP error).</summary>
-        public string ApIconGlyph
+        /// <summary>AP line icon (vector wifi drawing) shown while the AP is up: green = THIS PC goes through the hotspot, blue = the PC goes another way.</summary>
+        public Visibility ApWifiVisibility
         {
-            get => _apIconGlyph;
-            private set => SetProperty(ref _apIconGlyph, value);
+            get => _apWifiVisibility;
+            private set => SetProperty(ref _apWifiVisibility, value);
         }
 
-        /// <summary>STA line icon: <bars> (internet) - <bars+bang> (router, no internet) - <cross> (not joined).</summary>
-        public string StaIconText
+        /// <summary>AP line icon shown when the AP has no IP: the same wifi drawing with a slash, in red.</summary>
+        public Visibility ApWifiOffVisibility
         {
-            get => _staIconText;
-            private set => SetProperty(ref _staIconText, value);
+            get => _apWifiOffVisibility;
+            private set => SetProperty(ref _apWifiOffVisibility, value);
+        }
+
+        /// <summary>STA icon: 4 signal bars graded by RSSI (bars not reached are dimmed).</summary>
+        public Visibility StaBarsVisibility
+        {
+            get => _staBarsVisibility;
+            private set => SetProperty(ref _staBarsVisibility, value);
+        }
+
+        /// <summary>STA icon used while the device IS joined to a router but the firmware reports no RSSI reading.</summary>
+        public Visibility StaWifiVisibility
+        {
+            get => _staWifiVisibility;
+            private set => SetProperty(ref _staWifiVisibility, value);
+        }
+
+        /// <summary>STA icon used while the device is NOT joined to any router (red cross).</summary>
+        public Visibility StaCrossVisibility
+        {
+            get => _staCrossVisibility;
+            private set => SetProperty(ref _staCrossVisibility, value);
+        }
+
+        /// <summary>Brush of the 1st (shortest) signal bar: the icon colour when the RSSI reaches the level, dimmed otherwise.</summary>
+        public Brush StaBar1Brush
+        {
+            get => _staBar1Brush;
+            private set => SetProperty(ref _staBar1Brush, value);
+        }
+
+        /// <summary>Brush of the 2nd signal bar (see <see cref="StaBar1Brush"/>).</summary>
+        public Brush StaBar2Brush
+        {
+            get => _staBar2Brush;
+            private set => SetProperty(ref _staBar2Brush, value);
+        }
+
+        /// <summary>Brush of the 3rd signal bar (see <see cref="StaBar1Brush"/>).</summary>
+        public Brush StaBar3Brush
+        {
+            get => _staBar3Brush;
+            private set => SetProperty(ref _staBar3Brush, value);
+        }
+
+        /// <summary>Brush of the 4th (tallest) signal bar (see <see cref="StaBar1Brush"/>).</summary>
+        public Brush StaBar4Brush
+        {
+            get => _staBar4Brush;
+            private set => SetProperty(ref _staBar4Brush, value);
+        }
+
+        /// <summary>ToolTip of the STA icon: "Signal: -52 dBm" - "Joined the router (no signal reading)" - "Not joined any router".</summary>
+        public string StaSignalToolTip
+        {
+            get => _staSignalToolTip;
+            private set => SetProperty(ref _staSignalToolTip, value);
         }
 
         /// <summary>AP line icon colour: grey (unknown) - green (Connected) - blue (Ready) - red (Error).</summary>
@@ -629,11 +723,11 @@ namespace MLAstroRPA.Dockables
         /// </summary>
         public bool CanManualControl => !_isAutomatedAdjustment && !IsAutomaticMotion && !HasActiveErrors && !IsExternalLocked;
 
-        // --- Arrow buttons (jog): IsEnabled = CanManualControl && not locked by a firmware refusal ---
-        public bool CanJogAltUp => CanManualControl && !_jogAltUpBlocked;
-        public bool CanJogAltDown => CanManualControl && !_jogAltDownBlocked;
-        public bool CanJogAzLeft => CanManualControl && !_jogAzLeftBlocked;
-        public bool CanJogAzRight => CanManualControl && !_jogAzRightBlocked;
+        // --- Arrow buttons (jog): IsEnabled = CanManualControl && no firmware refusal && no relative step running ---
+        public bool CanJogAltUp => CanManualControl && !_isRelativeMoveRunning && !_jogAltUpBlocked;
+        public bool CanJogAltDown => CanManualControl && !_isRelativeMoveRunning && !_jogAltDownBlocked;
+        public bool CanJogAzLeft => CanManualControl && !_isRelativeMoveRunning && !_jogAzLeftBlocked;
+        public bool CanJogAzRight => CanManualControl && !_isRelativeMoveRunning && !_jogAzRightBlocked;
 
         /// <summary>Tells the UI that the enabled state of the four arrow buttons may have changed.</summary>
         private void NotifyCanJogChanged()
@@ -642,6 +736,46 @@ namespace MLAstroRPA.Dockables
             OnPropertyChanged(nameof(CanJogAltDown));
             OnPropertyChanged(nameof(CanJogAzLeft));
             OnPropertyChanged(nameof(CanJogAzRight));
+        }
+
+        /// <summary>
+        /// Locks the four arrow buttons after a relative step was sent: the firmware drives that step as a
+        /// commanded move (the same class as an automatic run / return home), so the user must not start
+        /// another jog/step while the axis is still travelling. STOP / E-STOP release the lock immediately.
+        /// </summary>
+        private void LockRelativeMove()
+        {
+            _relativeMoveStartedUtc = DateTime.UtcNow;
+            _relativeMoveSeenMotion = false;
+            SetRelativeMoveRunning(true);
+        }
+
+        /// <summary>
+        /// Called for EVERY telemetry frame: releases the relative-move lock once the firmware reports the
+        /// motion has ended (or after the grace / hard timeout when no motion is ever reported).
+        /// </summary>
+        private void EvaluateRelativeMoveLock()
+        {
+            if (!_isRelativeMoveRunning) return;
+
+            double elapsed = (DateTime.UtcNow - _relativeMoveStartedUtc).TotalSeconds;
+            if (IsMotionActive) _relativeMoveSeenMotion = true;
+
+            bool motionEnded = _relativeMoveSeenMotion && !IsMotionActive;   // travelled, then stopped
+            bool noMotionReported = !_relativeMoveSeenMotion && elapsed >= RELATIVE_MOVE_LOCK_GRACE_SECONDS;
+            if (!motionEnded && !noMotionReported && elapsed < RELATIVE_MOVE_LOCK_MAX_SECONDS) return;
+
+            // Lý do tách thành biến: chuỗi có nháy kép lồng trong nội suy $“…” gây lỗi cú pháp C#.
+            string reason = motionEnded ? "motion ended" : (noMotionReported ? "no motion reported" : "timeout");
+            SetRelativeMoveRunning(false);
+            Logger.Info($"[MLAstro] Relative move finished ({reason}) - arrow buttons unlocked");
+        }
+
+        private void SetRelativeMoveRunning(bool running)
+        {
+            if (_isRelativeMoveRunning == running) return;
+            _isRelativeMoveRunning = running;
+            NotifyCanJogChanged();
         }
 
         private void SetJogBlocked(ref bool field, bool blocked, string propertyName)
@@ -958,6 +1092,8 @@ namespace MLAstroRPA.Dockables
 
             // Update system status with color
             SystemStatus = e.Data.Status;
+            // Relative-step lock: evaluated on EVERY frame (the status may not change between frames).
+            EvaluateRelativeMoveLock();
             StatusForeground = e.Data.Status switch
             {
                 "MOVING" => Brushes.Yellow,
@@ -1048,8 +1184,8 @@ namespace MLAstroRPA.Dockables
             // For now, keep placeholder values
             // AzOutSpeed, AltOutSpeed, AzMotorSpeed, AltMotorSpeed remain as initialized
 
-            // The "STA: <icon> IP" line in the HeaderBar (firmware tokens WQu + STAi)
-            UpdateStaStatus(e.Data.StaQuality, e.Data.StationIP);
+            // The "STA: <icon> IP" line in the HeaderBar (firmware tokens WQu + WRs + STAi)
+            UpdateStaStatus(e.Data.StaQuality, e.Data.StationIP, e.Data.Rssi);
 
             // The "AP: Connected/Ready/Error <IP>" line in the HeaderBar (firmware tokens APrd + APip)
             _apReady = e.Data.ApReady;
@@ -1268,16 +1404,22 @@ namespace MLAstroRPA.Dockables
             }
         }
 
+        /// <summary>Bar colour while the router gives no internet (WQu = 1): amber, like the web UI.</summary>
+        private static readonly Brush StaNoInternetBrush = CreateFrozenBrush(255, 241, 196, 15);
+
         /// <summary>
         /// The "AP: ..." line in the HeaderBar. The DEVICE AP state comes from telemetry (tokens APrd/APip);
         /// whether the PC goes THROUGH the AP comes from the `link` the firmware reports in handshakeResult.
+        /// The icon is a vector wifi drawing (see HeaderBar.xaml): green = THIS PC goes through the hotspot,
+        /// blue = the AP is up but the PC goes another way, the slashed drawing in red = AP error.
         /// </summary>
         private void UpdateApStatus()
         {
             // Until the device answers, the AP state is unknown.
             if (!_serialService.IsConnected)
             {
-                ApIconGlyph = string.Empty;
+                ApWifiVisibility = Visibility.Collapsed;
+                ApWifiOffVisibility = Visibility.Collapsed;
                 ApIconBrush = Brushes.Gray;
                 ApStatusText = "-";
                 return;
@@ -1285,61 +1427,85 @@ namespace MLAstroRPA.Dockables
 
             if (!_apReady)
             {
-                ApIconGlyph = "\u274C";
-                ApIconBrush = Brushes.Red;             // ❌ Error
+                ApWifiVisibility = Visibility.Collapsed;
+                ApWifiOffVisibility = Visibility.Visible;
+                ApIconBrush = Brushes.Red;
                 ApStatusText = string.Empty;
                 return;
             }
 
             ApStatusText = string.IsNullOrWhiteSpace(_apIp) ? string.Empty : _apIp.Trim();
-            if (string.Equals(_serialService.LinkPath, "AP", StringComparison.OrdinalIgnoreCase))
-            {
-                // <wireless mark> green: Connected - THIS PC (NINA) goes through the ESP32 hotspot.
-                ApIconGlyph = "\U0001F6DC";
-                ApIconBrush = Brushes.LimeGreen;
-            }
-            else
-            {
-                // <wireless mark> blue: Ready - the AP is up but the PC goes another way (STA / USB cable).
-                ApIconGlyph = "\U0001F6DC";
-                ApIconBrush = Brushes.DodgerBlue;
-            }
+            ApWifiVisibility = Visibility.Visible;
+            ApWifiOffVisibility = Visibility.Collapsed;
+            // Green when THIS PC (NINA) runs through the ESP32 hotspot, blue when it goes another way.
+            ApIconBrush = string.Equals(_serialService.LinkPath, "AP", StringComparison.OrdinalIgnoreCase)
+                ? Brushes.LimeGreen
+                : Brushes.DodgerBlue;
         }
 
         /// <summary>
-        /// The "STA: <icon> IP" line in the HeaderBar - glyph = link quality, COLOUR = CLIENT state:
-        ///   glyph (token WQu): 0 = not joined to the router -> <cross> - 1 = router, no internet -> <bars+bang> -
-        ///   2 = internet -> <bars> (text = the LAN IP of the device, "none" while not joined).
-        ///   colour (LinkPath): green when THIS PC (NINA) goes through STA; blue when the PC goes
-        ///   another way (USB cable "COM" or hotspot "AP"). The <cross> not-joined case stays red.
-        ///   The icon must use a monochrome font (XAML: Segoe UI Symbol) for Foreground to apply.
+        /// The "STA: <icon> IP" line in the HeaderBar. The text is the LAN IP the router gave the ESP32; the icon
+        /// is drawn as vector shapes (HeaderBar.xaml), the same drawings as the web UI:
+        ///   - 4 signal bars graded by the RSSI (token WRs over Serial, `rssi` field over Wireless): >= -60 dBm = 4
+        ///     bars, >= -70 = 3, >= -80 = 2, otherwise 1 bar. The bars the level does not reach are dimmed to 22 %.
+        ///   - the plain wifi drawing while the device IS joined but the firmware has no RSSI reading.
+        ///   - a cross when the device is NOT joined to any router (token WQu = 0).
+        /// Colours: amber while the router gives no internet (WQu = 1), otherwise green when THIS PC (NINA) goes
+        /// through STA and blue when the PC goes another way (USB cable "COM" or hotspot "AP").
         /// </summary>
-        private void UpdateStaStatus(int staQuality, string? staIp)
+        private void UpdateStaStatus(int staQuality, string? staIp, int rssi)
         {
             var ip = string.IsNullOrWhiteSpace(staIp) ? string.Empty : staIp.Trim();
 
-            // Client state: does THIS PC (NINA) currently go through this STA route.
-            var clientViaSta = string.Equals(_serialService.LinkPath, "STA", StringComparison.OrdinalIgnoreCase);
-            var clientBrush = clientViaSta ? Brushes.LimeGreen : Brushes.DodgerBlue;
+            // Remember the last real reading: the simplified telemetry frame sent while the motors run carries no
+            // RSSI token, and a device without the WRs token never sends one.
+            if (rssi > -1000) _lastStaRssi = rssi;
 
-            switch (staQuality)
+            if (staQuality <= 0)
             {
-                case 1:
-                    StaIconText = "\U0001F4F6\u2757";
-                    StaIconBrush = clientBrush;
-                    StaStatusText = ip.Length > 0 ? ip : "router only";
-                    break;
-                case 2:
-                    StaIconText = "\U0001F4F6";
-                    StaIconBrush = clientBrush;
-                    StaStatusText = ip.Length > 0 ? ip : "connected";
-                    break;
-                default:
-                    StaIconText = "\u274C";
-                    StaIconBrush = Brushes.Red;
-                    StaStatusText = "none";
-                    break;
+                // Not joined to any router: red cross, like the web UI.
+                StaIconBrush = Brushes.Red;
+                ShowStaIcon(cross: true);
+                StaStatusText = "none";
+                StaSignalToolTip = "Not joined any router";
+                _lastStaRssi = -1000;
+                return;
             }
+
+            var clientViaSta = string.Equals(_serialService.LinkPath, "STA", StringComparison.OrdinalIgnoreCase);
+            var iconBrush = staQuality == 1
+                ? StaNoInternetBrush
+                : (clientViaSta ? Brushes.LimeGreen : Brushes.DodgerBlue);
+            StaIconBrush = iconBrush;
+            StaStatusText = ip.Length > 0 ? ip : (staQuality == 1 ? "router only" : "connected");
+
+            if (_lastStaRssi <= -1000)
+            {
+                // Joined, but no signal reading (old firmware without the WRs token) -> plain wifi drawing.
+                ShowStaIcon(wifi: true);
+                StaSignalToolTip = "Joined the router (no signal reading)";
+                return;
+            }
+
+            var level = StaSignalLevel(_lastStaRssi);
+            ShowStaIcon(bars: true);
+            StaBar1Brush = level >= 1 ? iconBrush : StaBarDimBrush;
+            StaBar2Brush = level >= 2 ? iconBrush : StaBarDimBrush;
+            StaBar3Brush = level >= 3 ? iconBrush : StaBarDimBrush;
+            StaBar4Brush = level >= 4 ? iconBrush : StaBarDimBrush;
+            StaSignalToolTip = $"Signal: {_lastStaRssi} dBm";
+        }
+
+        /// <summary>RSSI (dBm) to number of signal bars - the same thresholds as the web UI.</summary>
+        private static int StaSignalLevel(int rssi)
+            => rssi >= -60 ? 4 : rssi >= -70 ? 3 : rssi >= -80 ? 2 : 1;
+
+        /// <summary>Shows exactly one of the three STA icon drawings (bars / wifi / cross).</summary>
+        private void ShowStaIcon(bool bars = false, bool wifi = false, bool cross = false)
+        {
+            StaBarsVisibility = bars ? Visibility.Visible : Visibility.Collapsed;
+            StaWifiVisibility = wifi ? Visibility.Visible : Visibility.Collapsed;
+            StaCrossVisibility = cross ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void UpdateStatusColor()
@@ -1420,6 +1586,9 @@ namespace MLAstroRPA.Dockables
         public void StopAllMovement()
         {
             StopJogMovement();
+            // STOP ends a relative step as well ⇒ release its arrow-button lock right away (the firmware
+            // decelerates and reports the motion ending by itself).
+            SetRelativeMoveRunning(false);
             SendCommand("STOP:1\n");
             // If TPPA currently holds external control, tell it to stop the polar alignment right away.
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro STOP pressed");
@@ -1433,6 +1602,7 @@ namespace MLAstroRPA.Dockables
             // ":1" right after the ESTOP, the firmware re-arms the far move(+-1e9) and the motor
             // simply restarts - which looked like "FORCE-STOP does not stop the motor".
             StopJogMovement();
+            SetRelativeMoveRunning(false);   // E-STOP ends a relative step as well
             SendCommand("ESTOP:1\n");
             if (_serialService.IsExternalControlActive) _serialService.NotifyExternalStop("MLAstro FORCE-STOP pressed");
             // Broker session: FORCE-STOP has to end the TPPA session as well.
@@ -1511,6 +1681,9 @@ namespace MLAstroRPA.Dockables
 
             // Then send move command (just once, no watchdog needed)
             SendCommand($"{axis}:1\n");
+            // A relative step is a commanded move (same class as an automatic run / return home): lock the
+            // four arrow buttons until the firmware reports the motion ended (see EvaluateRelativeMoveLock).
+            LockRelativeMove();
             Logger.Info($"[MLAstro] Relative move: {axis} - {RelativeDegrees}° {RelativeMinutes}' {RelativeSeconds}\"");
         }
 

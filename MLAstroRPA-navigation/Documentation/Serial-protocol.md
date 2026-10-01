@@ -184,7 +184,7 @@ The ESP32 will reply immediately with a data string formatted as follows:
 *   `DATA_SETTING`: A comma-separated list of all current system configuration variables.
 
 **Full List of Telemetry Data Keys (DATA_SETTING):**
-*   **System:** `Scal` (Fixed scale = 1), `WSta` (WiFi Status: 1=Connected, 0=Disconnected), `WQu` (STA Quality: 0=not joined the router, 1=joined but no internet, 2=internet OK), `APrd` (AP Ready: 1=hotspot up with an IP, 0=AP failed), `SLvl` (Current Speed Level 1-5), `Home` (Homed status: 1/0).
+  *   **System:** `Scal` (Fixed scale = 1), `WSta` (WiFi Status: 1=Connected, 0=Disconnected), `WQu` (STA Quality: 0=not joined the router, 1=joined but no internet, 2=internet OK), `WRs` (STA RSSI in dBm, -1000 = not connected / no reading), `APrd` (AP Ready: 1=hotspot up with an IP, 0=AP failed), `SLvl` (Current Speed Level 1-5), `Home` (Homed status: 1/0).
 *   **Relative Move:** `JoRe` (Mode: 0=Jog, 1=Relative), `ReDe` (Deg), `ReAM` (Min), `ReAS` (Sec).
 *   **Alignment Settings:** `AzED`, `AzEM`, `AzES`, `AzDi` (Direction: 1/0), `AlED`, `AlEM`, `AlES`, `AlDi` (Direction: 1/0).
 *   **Azimuth Settings:** `AzPH` (Current Position in Deg), `AzL1`/`AzL2` (Soft Limits Min/Max), `AzRD` (Reverse Dir: 1/0), `AzIR`/`AzIH` (Run/Hold Current mA), `AzSB`/`AzSC` (Startup Boost/Soft CoolStep %), `AzMS` (Microsteps), `AzAc`/`AzDec` (Accel/Decel), `AzSD` (Steps/Degree), `AzRM` (Run Mode: 1=SpreadCycle, 0=StealthChop).

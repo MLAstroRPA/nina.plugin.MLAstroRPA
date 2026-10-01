@@ -130,6 +130,23 @@ namespace MLAstroRPA.Services
             }
         }
 
+        private bool _isResolving;
+        /// <summary>
+        /// True while the configured wireless address is being resolved (mDNS/DNS). The CONNECTION tab locks
+        /// the Connect button for that window, so a second click cannot start a second attempt on top of it.
+        /// It is cleared again as soon as the resolve succeeds or fails.
+        /// </summary>
+        public bool IsResolving
+        {
+            get => _isResolving;
+            private set
+            {
+                if (_isResolving == value) return;
+                _isResolving = value;
+                OnPropertyChanged();
+            }
+        }
+
         private string _connectionStatus = "Disconnected";
         public string ConnectionStatus
         {
@@ -311,7 +328,18 @@ namespace MLAstroRPA.Services
                 else
                 {
                     ConnectionStatus = $"Resolving {host}... (attempt {attempt})";
-                    var resolved = await ResolveMdnsAsync(host, token).ConfigureAwait(false);
+                    IPAddress? resolved = null;
+                    IsResolving = true;
+                    try
+                    {
+                        resolved = await ResolveMdnsAsync(host, token).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        // Success or failure: the Connect button is usable again at once, so a failed resolve
+                        // does not leave the operator with a locked button.
+                        IsResolving = false;
+                    }
                     if (resolved == null)
                     {
                         lastError = $"Cannot resolve {host} (mDNS/DNS failed).";
@@ -900,7 +928,13 @@ namespace MLAstroRPA.Services
             // Scal:1 = the scale factor of the full telemetry frame (same as the serial firmware).
             AddToken(tokens, "Scal", "1");
             AddToken(tokens, "SLvl", _speedLevelFromSnapshot.ToString(CultureInfo.InvariantCulture));
-            AddToken(tokens, "WSta", TryGetDouble(root, "rssi", out var rssi) && rssi > -1000 ? "1" : "0");
+            // NOTE: TryGetDouble() leaves `rssi` at 0 when the field is missing, so the "has a reading" test must
+            // also use its return value (otherwise old firmware would look like a 0 dBm reading).
+            var hasRssi = TryGetDouble(root, "rssi", out var rssi) && rssi > -1000;
+            AddToken(tokens, "WSta", hasRssi ? "1" : "0");
+            // RSSI (dBm) forwarded as the serial token WRs, so the dock grades the signal bars the SAME way over
+            // Wireless and over a Serial cable (-1000 = the firmware has no reading / is not joined).
+            AddToken(tokens, "WRs", hasRssi ? ((int)rssi).ToString(CultureInfo.InvariantCulture) : "-1000");
 
             // STA quality + the LAN IP of the device (firmware 1.7.0+). They are forwarded as the
             // WQu / STAi tokens so the dock parses them through the SAME path as a Serial cable.
@@ -908,7 +942,7 @@ namespace MLAstroRPA.Services
             // router => 1) so the STA line does not wrongly show "none".
             StaQuality = TryGetInt(root, "sta_qual", out var staQual)
                 ? staQual
-                : (rssi > -1000 ? 1 : 0);
+                : (hasRssi ? 1 : 0);
             if (TryGetString(root, "sta_ip", out var staIp) && !string.IsNullOrWhiteSpace(staIp))
             {
                 // Written into the snapshot "ip" scalar => AppendSnapshotTokens emits the STAi token with the NEWEST IP

@@ -259,9 +259,17 @@ namespace MLAstroRPA.Plugin
             OnPropertyChanged(nameof(AutoScanButtonText));
             OnPropertyChanged(nameof(IsExternalLocked));
             OnPropertyChanged(nameof(IsExternalUnlocked));
+            OnPropertyChanged(nameof(IsConnectionButtonEnabled));
         }
 
         public string SerialConnectButtonText => IsSerialConnected ? "Disconnect" : "Connect";
+
+        /// <summary>
+        /// False only while the wireless address is being resolved: the Connect button is locked for that
+        /// window (a second click would start a resolve/connect attempt on top of the running one) and it is
+        /// released again as soon as the resolve succeeds or fails.
+        /// </summary>
+        public bool IsConnectionButtonEnabled => !_webSocketService.IsResolving;
 
         // ===== Auto scan COM port (CONNECTION tab) =====
 

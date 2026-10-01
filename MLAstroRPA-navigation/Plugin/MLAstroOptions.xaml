@@ -179,6 +179,8 @@
                                 <Button Content="{Binding SerialConnectButtonText}"
                                         Width="110"
                                         Margin="0,0,10,0"
+                                        IsEnabled="{Binding IsConnectionButtonEnabled}"
+                                        ToolTip="Locked while the address is being resolved (mDNS/DNS), so a second click cannot start another attempt."
                                         Command="{Binding ToggleSerialConnectionCommand}" />
                                 <!-- Reset ESP32 only makes sense on a live session: shown once the connection is up. -->
                                 <Button Content="Reset ESP32"

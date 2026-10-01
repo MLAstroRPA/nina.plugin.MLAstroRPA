@@ -2523,6 +2523,12 @@ namespace MLAstroRPA.Services
                             if (int.TryParse(value, out var staQuality))
                                 data.StaQuality = staQuality;
                             break;
+                        // RSSI of the STA link in dBm (token WRs; -1000 = not connected / no reading). It grades the
+                        // signal bars drawn in the HeaderBar (>= -60 = 4 bars, >= -70 = 3, >= -80 = 2, else 1).
+                        case "WRs":
+                            if (int.TryParse(value, out var rssi))
+                                data.Rssi = rssi;
+                            break;
 
                         // Relative Mode
                         case "JoRe":
@@ -2638,6 +2644,8 @@ namespace MLAstroRPA.Services
         public bool WifiConnected { get; set; }
         /// <summary>STA link quality: 0 = not joined to the router, 1 = router but no internet, 2 = internet.</summary>
         public int StaQuality { get; set; }
+        /// <summary>RSSI of the STA link in dBm (token WRs / WebSocket field `rssi`; -1000 = not connected / no reading).</summary>
+        public int Rssi { get; set; } = -1000;
         public bool IsHomed { get; set; }
 
         // Mode

@@ -297,6 +297,14 @@ namespace MLAstroRPA.Plugin
             richTextBox.Unloaded += (_, _) =>
             {
                 binding.Source.CollectionChanged -= binding.Handler;
+
+                // The marker goes with the subscription: the same box fires Loaded AGAIN when the tab is
+                // re-created, and that Loaded returns early while the Tag is still set - the document would
+                // stay frozen at the lines of the first load (new lines and Clear would show no effect).
+                if (ReferenceEquals(richTextBox.Tag, binding))
+                {
+                    richTextBox.Tag = null;
+                }
             };
 
             RebuildSystemLog(richTextBox, binding.Source);
