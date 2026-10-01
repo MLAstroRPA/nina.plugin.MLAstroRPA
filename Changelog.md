@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 3.1.2.0 — 2026-10-01
+
+### Changed — the automated adjustment settle time is now waited on the TPPA side (sent along with the measurement request), so the wait shows up in the TPPA status bar as "Settling" exactly like the adjustment systems TPPA drives on its own, and this plugin no longer blocks its own status line with a settle text the firmware telemetry overwrote
+
 ## 3.1.1.0 — 2026-09-27
 
 ### Added — the controller announces its hardware readiness (firmware STATUS token) on `ControllerReady`, when the TPPA session opens and again whenever the axes go busy or ready, so TPPA can check the controller before the hand-over

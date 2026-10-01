@@ -143,6 +143,15 @@ namespace MLAstroRPA.Broker
     {
         public string WindowId { get; set; }
         public bool StationaryAndSettled { get; set; }
+
+        /// <summary>
+        /// Seconds TPPA waits before it captures: the firmware reports the move as completed once the axes reached
+        /// the target, but the mechanics still need a moment (backlash release, vibration). The wait runs on the
+        /// TPPA side so the operator reads "Settling" in the TPPA status bar, exactly like the adjustment systems
+        /// TPPA drives on its own. Null or 0 = measure straight away.
+        /// </summary>
+        public double? SettleSeconds { get; set; }
+
         public string Reason { get; set; }
     }
 

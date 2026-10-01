@@ -33,6 +33,14 @@ namespace MLAstroRPA.Broker
         private const int MaxWorseningMeasurements = 2;
 
         /// <summary>
+        /// Consecutive growing measurements an axis whose direction is already confirmed may still show before the
+        /// session is stopped. The earlier ones only warn and the correction goes on: a direction that an improvement
+        /// has proven cannot turn wrong later, so growth that late is play, backlash, a slipping coupling or a
+        /// measurement problem - the direction setting must not be blamed for it.
+        /// </summary>
+        private const int MaxConfirmedGrowthMeasurements = 3;
+
+        /// <summary>
         /// Consecutive solves inside the tolerance that TPPA has to report before this controller asks it
         /// to finish. TPPA counts them itself; this is only the fallback for a build that publishes the
         /// counter without the ready flag.
@@ -889,14 +897,14 @@ namespace MLAstroRPA.Broker
             // target the error sits on, so a move in the wrong direction keeps the sign of the sweep error and
             // grows there, while a move in the right one - the overshoot leg included - crosses the target.
             var toleranceArcMin = Math.Max(0, measurement.ToleranceArcMin);
-            var wrongAzimuth = TrackAxisError("AZ", 0, measurement.AzimuthErrorArcMin, toleranceArcMin);
-            if (wrongAzimuth != null && await HandleWrongDirectionAsync(wrongAzimuth, 0).ConfigureAwait(false))
+            var azGrowth = TrackAxisError("AZ", 0, measurement.AzimuthErrorArcMin, toleranceArcMin);
+            if (azGrowth != null && await HandleAxisGrowthAsync(azGrowth, 0).ConfigureAwait(false))
             {
                 return;
             }
 
-            var wrongAltitude = TrackAxisError("ALT", 1, measurement.AltitudeErrorArcMin, toleranceArcMin);
-            if (wrongAltitude != null && await HandleWrongDirectionAsync(wrongAltitude, 1).ConfigureAwait(false))
+            var altGrowth = TrackAxisError("ALT", 1, measurement.AltitudeErrorArcMin, toleranceArcMin);
+            if (altGrowth != null && await HandleAxisGrowthAsync(altGrowth, 1).ConfigureAwait(false))
             {
                 return;
             }
@@ -934,6 +942,10 @@ namespace MLAstroRPA.Broker
 
         private async Task HandleVerifyOnlyAsync(BridgeMeasurement measurement, CancellationToken token)
         {
+            // No move was planned, so the next measurement must not be judged as if an axis had been commanded.
+            _axisCommandedLastStep[0] = false;
+            _axisCommandedLastStep[1] = false;
+
             if (measurement.ToleranceReached || measurement.AutoFinishConditionMet)
             {
                 SetStatus($"Within tolerance ({measurement.TotalErrorArcMin:0.##}') - confirming");
@@ -1057,6 +1069,10 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
+            // The next measurement may only judge an axis this step really commanded.
+            _axisCommandedLastStep[0] = plan.MoveAzimuth;
+            _axisCommandedLastStep[1] = plan.MoveAltitude;
+
             // No back-off move: the overshoot leg already travelled past the target and the next
             // measurement corrects whatever is left, exactly like the MLAstro TPPA plugin did. Coming back
             // on purpose would put the play back into the axis the overshoot just removed.
@@ -1065,14 +1081,10 @@ namespace MLAstroRPA.Broker
             ClearWindow();
 
             // The firmware reports the move as completed once the axes reached the target, but the mechanics
-            // still need a moment (backlash release, vibration). This is the settle the internal TPPA loop
-            // does after its own moves; here the controller owns the move, so it waits before measuring.
+            // still need a moment (backlash release, vibration). The wait itself belongs to TPPA: it is the side
+            // that captures, and it already runs the very same wait for the adjustment systems it drives on its
+            // own, so the operator sees "Settling" in the TPPA status bar and this status line stays free.
             var settleSeconds = _settings.AutomatedAdjustmentSettleTime;
-            if (settleSeconds > 0)
-            {
-                SetStatus($"Settling {settleSeconds:0.#} s");
-                await Task.Delay(TimeSpan.FromSeconds(settleSeconds), token).ConfigureAwait(false);
-            }
 
             if (token.IsCancellationRequested) { return; }
 
@@ -1082,6 +1094,7 @@ namespace MLAstroRPA.Broker
                                        {
                                            WindowId = windowId,
                                            StationaryAndSettled = true,
+                                           SettleSeconds = settleSeconds > 0 ? settleSeconds : (double?)null,
                                            Reason = BridgeReason.StepFinished
                                        }).ConfigureAwait(false);
             SetStatus("Waiting for the next measurement");
@@ -1285,6 +1298,16 @@ namespace MLAstroRPA.Broker
         /// <summary>Consecutive measurements that kept the reference side of the target and grew (any improvement or crossing resets it).</summary>
         private readonly int[] _axisIncreaseStreak = new int[2];
 
+        /// <summary>
+        /// True when the last executed step really commanded that axis. Growth of an axis that was left alone (held
+        /// inside the tolerance, or a verify-only step) says nothing about its direction: that error moves with the
+        /// sky, the mount or the tripod, not with the command.
+        /// </summary>
+        private readonly bool[] _axisCommandedLastStep = new bool[2];
+
+        /// <summary>Last judged error of each axis (arcmin), used by the messages of the growth verdict.</summary>
+        private readonly double[] _axisLastErrorArcMin = new double[2];
+
         /// <summary>Automatic direction changes already used per axis in this session (one is allowed).</summary>
         private readonly int[] _axisAutoDirectionChanges = new int[2];
 
@@ -1334,6 +1357,11 @@ namespace MLAstroRPA.Broker
                 return null;
             }
 
+            // An axis that was not commanded cannot be judged: its error moves with the sky, the mount or the tripod.
+            if (!_axisCommandedLastStep[index]) { return null; }
+
+            _axisLastErrorArcMin[index] = errorArcMin;
+
             if (Math.Sign(errorArcMin) != Math.Sign(reference.Value))
             {
                 // The axis crossed its target, which only a move in the commanded direction can do - the overshoot
@@ -1372,16 +1400,53 @@ namespace MLAstroRPA.Broker
         }
 
         /// <summary>
-        /// The direction of one axis is wrong. Auto mode flips the stored software reverse direction, but only while
-        /// that axis is still probing its direction: once an improvement or a target crossing has confirmed it, a
-        /// measurement on the reference side is not a direction problem any more, so nothing is flipped then. Without
-        /// a flip the session is cancelled with the matching hint. Returns true when the session was ended.
+        /// One axis kept growing on the reference side. While that axis is still probing its direction this is the
+        /// direction verdict: auto mode flips the stored software reverse direction once, and without a flip the
+        /// session is cancelled with the matching hint. Once the direction has been proven (an improvement or a target
+        /// crossing was seen), a growing error is NOT a direction problem any more: the axis only gets a warning while
+        /// it keeps growing, and the session is stopped after <see cref="MaxConfirmedGrowthMeasurements"/> growing
+        /// measurements in a row, with a note that states what was measured instead of blaming the direction.
+        /// Returns true when the session was ended.
         /// </summary>
-        private async Task<bool> HandleWrongDirectionAsync(string axisName, int index)
+        private async Task<bool> HandleAxisGrowthAsync(string axisName, int index)
         {
+            if (_axisDirectionConfirmed[index])
+            {
+                var referenceArcMin = _axisReferenceErrorArcMin[index];
+                var errorArcMin = _axisLastErrorArcMin[index];
+
+                if (_axisIncreaseStreak[index] < MaxConfirmedGrowthMeasurements)
+                {
+                    // The direction of this axis is proven, so the growth is not a direction problem: warn, keep
+                    // correcting, and only stop when the error keeps growing anyway.
+                    var warning = $"The {axisName} polar error grew on the side of the reference sweep value " +
+                                  $"({referenceArcMin:0.##}' -> {errorArcMin:0.##}') after {_axisIncreaseStreak[index]} " +
+                                  "corrections in a row - the correction goes on.";
+                    Logger.Warning($"[MLAstro][Broker] {warning}");
+                    SetStatus($"{axisName} is not converging ({errorArcMin:0.##}')");
+                    try
+                    {
+                        NINA.Core.Utility.Notification.Notification.ShowWarning(warning, TimeSpan.FromMinutes(1));
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning($"[MLAstro][Broker] Could not show the growth warning: {ex.Message}");
+                    }
+
+                    return false;
+                }
+
+                var stopNote = $"The {axisName} polar error kept growing on the side of the reference sweep value " +
+                               $"({referenceArcMin:0.##}' -> {errorArcMin:0.##}') for {_axisIncreaseStreak[index]} consecutive " +
+                               "corrections, so the session was stopped." + Environment.NewLine +
+                               $"The {axisName} direction was already confirmed by an improvement in this session.";
+                Logger.Error($"[MLAstro][Broker] {axisName} is not converging: {stopNote}");
+                await AbortSessionAsync(BridgeReason.ControllerFault, stopNote).ConfigureAwait(false);
+                return true;
+            }
+
             var mayFlip = _settings.CorrectionAutoChangeDirection
-                          && _axisAutoDirectionChanges[index] == 0
-                          && !_axisDirectionConfirmed[index];
+                          && _axisAutoDirectionChanges[index] == 0;
 
             if (mayFlip)
             {
