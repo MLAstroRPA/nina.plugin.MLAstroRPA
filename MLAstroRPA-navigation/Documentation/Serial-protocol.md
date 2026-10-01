@@ -76,6 +76,16 @@ To prevent equipment damage in case of software crashes or disconnected cables d
 | `RstH:1\n` | **Reset Home**: Clears the home status and coordinates. |
 | `Home:X\n` | *(Read-Only)* Returns current home status (`1` = Homed, `0` = Not homed). |
 
+### Aligned Position Commands
+*The same two actions as the `SAVE ALIGNED POSITION` / `FALLBACK SAVED POSITION` buttons in the Web UI and in
+the dock; both are refused while anything is moving (`error: Busy`) and the saved position lives in FRAM
+(survives reboot). Over the wireless link these two ASCII commands are translated into the JSON
+`saveAlignedPosition` / `fallbackAlignedPosition`.*
+| Command | Action / Description |
+| :--- | :--- |
+| `SvPA:1\n` | **Save Aligned Position**: stores the current Az/Alt stepper position as the aligned PA position. |
+| `FbPA:1\n` | **Fallback Saved Position**: drives both axes back to the saved aligned position — `error: No aligned position saved` until `SvPA:1` has been sent once. |
+
 
 ### Relative Setup Commands (Angle Input)
 *Pre-fill these values before executing a Move command in Relative mode (`JoRe:1`).*

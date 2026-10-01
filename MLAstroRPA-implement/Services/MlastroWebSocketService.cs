@@ -1399,6 +1399,10 @@ namespace MLAstroRPA.Services
             if (tokens.ContainsKey("SetH")) { outgoing.Add("{\"cmd\":\"setHome\",\"data\":{}}"); return outgoing; }
             if (tokens.ContainsKey("RetH")) { outgoing.Add("{\"cmd\":\"returnHome\",\"data\":{}}"); return outgoing; }
             if (tokens.ContainsKey("RstH")) { outgoing.Add("{\"cmd\":\"resetHome\",\"data\":{}}"); return outgoing; }
+            // #27: the two dock buttons "SAVE ALIGNED POSITION" / "FALLBACK SAVED POSITION"
+            // (Serial firmware: SvPA / FbPA) map onto the WebSocket API pair of the same name.
+            if (tokens.ContainsKey("SvPA")) { outgoing.Add("{\"cmd\":\"saveAlignedPosition\",\"data\":{}}"); return outgoing; }
+            if (tokens.ContainsKey("FbPA")) { outgoing.Add("{\"cmd\":\"fallbackAlignedPosition\",\"data\":{}}"); return outgoing; }
             if (tokens.TryGetValue("SLvl", out var level))
             {
                 if (int.TryParse(level, out var parsedLevel) && parsedLevel > 0)

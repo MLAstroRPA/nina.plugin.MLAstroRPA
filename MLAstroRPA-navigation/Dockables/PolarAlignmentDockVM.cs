@@ -1001,6 +1001,9 @@ namespace MLAstroRPA.Dockables
         public ICommand AlignAzCommand { get; }
         public ICommand AlignAltCommand { get; }
         public ICommand AlignAllCommand { get; }
+        // #27: lưu vị trí PA đã align / quay về vị trí đã lưu (giống 2 nút trên Web UI).
+        public ICommand SaveAlignedPositionCommand { get; }
+        public ICommand FallbackSavedPositionCommand { get; }
         public ICommand ToggleModifyCommand { get; }
 
         /// <summary>Clears the Alarm History table (a user action, it does not touch the error state).</summary>
@@ -1056,6 +1059,11 @@ namespace MLAstroRPA.Dockables
             AlignAzCommand = new RelayCommand(_ => OnAlignAz(), _ => CanAlign);
             AlignAltCommand = new RelayCommand(_ => OnAlignAlt(), _ => CanAlign);
             AlignAllCommand = new RelayCommand(_ => OnAlignAll(), _ => CanAlign);
+            // #27: Serial dùng `SvPA:1` / `FbPA:1`; đường Wireless dịch 2 lệnh này sang JSON
+            // (`saveAlignedPosition` / `fallbackAlignedPosition`) trong MlastroWebSocketService.
+            // Chỉ bật khi hệ thống rảnh (CanAlign = CanAutomaticControl); firmware là chốt cuối cùng.
+            SaveAlignedPositionCommand = new RelayCommand(_ => SendCommand("SvPA:1\n"), _ => CanAlign);
+            FallbackSavedPositionCommand = new RelayCommand(_ => SendCommand("FbPA:1\n"), _ => CanAlign);
             ToggleModifyCommand = new RelayCommand(_ => OnToggleModify(), _ => CanModify);
             ClearAlarmHistoryCommand = new RelayCommand(_ => ClearAlarmHistoryRows());
 #pragma warning restore CS0618

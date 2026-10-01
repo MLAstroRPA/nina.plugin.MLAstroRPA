@@ -628,17 +628,48 @@
                         <Button Grid.Column="3" Content="Align Alt" Width="100" VerticalAlignment="Center" Command="{Binding AlignAltCommand}" IsEnabled="{Binding CanAlign}"/>
                     </Grid>
 
-                    <!-- Align All Button -->
-                    <Button Content="✓ ALIGN ALL" 
-                            Width="{Binding ActualWidth, ElementName=ReturnHomeButton}"
-                            HorizontalAlignment="Left"
-                            Height="40"
-                            Background="Green"
-                            Foreground="White"
-                            IsEnabled="{Binding CanAlign}"
-                            FontWeight="Bold"
-                            FontSize="16"
-                            Command="{Binding AlignAllCommand}"/>
+                    <!-- Align row: ALIGN ALL + SAVE / FALLBACK the aligned polar-alignment position (#27).
+                         Same arrangement and sizes as the Web UI: one row, all three buttons the SAME height
+                         and the SAME width (a shared-size group makes every column as wide as the widest
+                         button). Over Serial they travel as `SvPA:1` / `FbPA:1`, over the wireless link they
+                         are translated into the JSON `saveAlignedPosition` / `fallbackAlignedPosition`. -->
+                    <Grid Grid.IsSharedSizeScope="True">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="AlignRowCol"/>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="AlignRowCol"/>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="AlignRowCol"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0"
+                                Content="✓ ALIGN ALL"
+                                Height="40"
+                                Margin="0,0,5,0"
+                                Background="Green"
+                                Foreground="White"
+                                IsEnabled="{Binding CanAlign}"
+                                FontWeight="Bold"
+                                FontSize="16"
+                                Command="{Binding AlignAllCommand}"/>
+                        <Button Grid.Column="1"
+                                Content="💾 SAVE ALIGNED POSITION"
+                                Height="40"
+                                Margin="0,0,5,0"
+                                Background="#2980B9"
+                                Foreground="White"
+                                FontWeight="Bold"
+                                FontSize="16"
+                                IsEnabled="{Binding CanAlign}"
+                                Command="{Binding SaveAlignedPositionCommand}"/>
+                        <Button Grid.Column="2"
+                                Content="🎯 FALLBACK SAVED POSITION"
+                                Height="40"
+                                Background="#E67E22"
+                                Foreground="White"
+                                FontWeight="Bold"
+                                FontSize="16"
+                                IsEnabled="{Binding CanAlign}"
+                                Command="{Binding FallbackSavedPositionCommand}"/>
+                    </Grid>
                 </StackPanel>
             </Expander>
 

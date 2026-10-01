@@ -6,6 +6,7 @@
 ### Added — the dock locks the four arrow buttons while a relative move started there is still travelling: the lock is released when the firmware reports the motion ended, with a grace for a step that never reports motion and a 10 minute safety net
 ### Added — the CONNECTION tab locks the Connect button while the wireless address is being resolved (mDNS/DNS) and releases it as soon as the resolve succeeds or fails
 ### Fixed — the System log panel no longer stays frozen at the lines of the first load: switching tabs dropped the collection handler without clearing the already-bound marker, so new lines and Clear had no visible effect
+### Added — the Polar Alignment section gets the same **SAVE ALIGNED POSITION** / **FALLBACK SAVED POSITION** buttons as the Web UI, on one row with ALIGN ALL and the same size; over Serial they send `SvPA` / `FbPA`, over the wireless link they are translated into `saveAlignedPosition` / `fallbackAlignedPosition`
 ### Fixed — the wireless RSSI is forwarded to the dock as the `WRs` token and a missing reading is told apart from 0 dBm, so the signal bars grade the same over Wireless and Serial
 
 ## 3.1.2.0 — 2026-10-01
