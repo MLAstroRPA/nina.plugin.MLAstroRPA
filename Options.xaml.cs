@@ -66,6 +66,10 @@ namespace NINA.Plugins.MLAstroRPA {
             if (scrollViewer != null) {
                 _optionsOuterScrollViewer = scrollViewer;
 
+                // Coming back from another NINA menu re-uses the page with the scroll offset it had
+                // before: reset it here so the header is stamped at the top of the page again.
+                scrollViewer.ScrollToTop();
+
                 if (_optionsHeader != null) {
                     // Distance from the top of the scroll content to the header (NINA's own page
                     // header may sit above ours, so it is not necessarily zero).
@@ -76,6 +80,11 @@ namespace NINA.Plugins.MLAstroRPA {
                 scrollViewer.ScrollChanged -= OnOuterOptionsScrollChanged;
                 scrollViewer.ScrollChanged += OnOuterOptionsScrollChanged;
                 UpdateOptionsHeaderPin(scrollViewer);
+
+                // A page that stays alive while the user visits another menu only becomes visible
+                // again (no second Loaded), so the pin is refreshed whenever it shows up.
+                root.IsVisibleChanged -= OnOptionsRootVisibilityChanged;
+                root.IsVisibleChanged += OnOptionsRootVisibilityChanged;
             }
         }
 
@@ -83,6 +92,33 @@ namespace NINA.Plugins.MLAstroRPA {
             if (sender is ScrollViewer scrollViewer) {
                 UpdateOptionsHeaderPin(scrollViewer);
             }
+        }
+
+        /// <summary>
+        /// The options page is re-shown when the user comes back from another NINA menu. Its scroll
+        /// offset can be restored before the ScrollChanged handler exists, which left the header and
+        /// the tab strip scrolled out of view; the reset is repeated at the next layout pass.
+        /// </summary>
+        private void OnOptionsRootVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e) {
+            if (e.NewValue is not true || sender is not FrameworkElement root) {
+                return;
+            }
+
+            root.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => {
+                var scrollViewer = _optionsOuterScrollViewer;
+                if (scrollViewer == null) {
+                    return;
+                }
+
+                scrollViewer.ScrollToTop();
+
+                if (_optionsHeader != null) {
+                    _headerTopInContent = _optionsHeader.TranslatePoint(new Point(0, 0), scrollViewer).Y
+                        + scrollViewer.VerticalOffset;
+                }
+
+                UpdateOptionsHeaderPin(scrollViewer);
+            }));
         }
 
         private void UpdateOptionsHeaderPin(ScrollViewer scrollViewer) {
