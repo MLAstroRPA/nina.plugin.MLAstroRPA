@@ -1105,6 +1105,8 @@ namespace MLAstroRPA.Dockables
             StatusForeground = e.Data.Status switch
             {
                 "MOVING" => Brushes.Yellow,
+                "STOPPING" => Brushes.Orange,
+                "STOPPED" => Brushes.Orange,
                 "HOMING" => Brushes.Cyan,
                 "ALIGNING" => Brushes.Orange,
                 "ALIGN_COMPLETED" => Brushes.LimeGreen,
@@ -1522,6 +1524,8 @@ namespace MLAstroRPA.Dockables
             {
                 "error" => Brushes.Red,
                 "moving" => Brushes.Yellow,
+                "stopping" => Brushes.Orange,   // STOP mềm đang giảm tốc
+                "stopped" => Brushes.Orange,    // vừa dừng xong (1 s) trước khi về READY
                 "aligning" => Brushes.Cyan,
                 "homing" => Brushes.Orange,
                 _ => Brushes.White

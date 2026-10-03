@@ -189,8 +189,10 @@
                                 <Setter TargetName="border" Property="Background" Value="#E74C3C"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
+                                <!-- Cùng kiểu nhấn với nút FORCE STOP ở HeaderBar: viền VÀNG quanh mặt đỏ. -->
                                 <Setter TargetName="border" Property="Background" Value="#C0392B"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="#922B21"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#FFD700"/>
+                                <Setter TargetName="border" Property="BorderThickness" Value="3"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
