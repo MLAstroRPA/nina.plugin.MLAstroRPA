@@ -36,7 +36,6 @@ namespace MLAstroRPA.Plugin
 
         private readonly SerialConnectionService _serialConnectionService;
         private readonly PolarAlignmentDockVM _polarAlignmentDockVM;
-        private readonly Action<bool> _onPauseQueryChanged;
         private ResourceDictionary? _pluginResourceDictionary;
         private FileSystemWatcher? _pluginFolderWatcher;
         private bool _disposed = false;
@@ -457,23 +456,21 @@ namespace MLAstroRPA.Plugin
             }
         }
 
-        public bool IsPauseQuery
+        /// <summary>
+        /// "Hide polling telemetry on terminal": drops the "?" poll and the telemetry line it answers with
+        /// from the terminal log, so the real commands and their replies stay readable.
+        /// </summary>
+        public bool IsHidePollingTelemetry
         {
-            get => SerialConnectionService.PauseQueryGlobal;
+            get => SerialConnectionService.HidePollingTelemetry;
             set
             {
-                if (SerialConnectionService.PauseQueryGlobal != value)
+                if (SerialConnectionService.HidePollingTelemetry != value)
                 {
-                    SerialConnectionService.PauseQueryGlobal = value;
+                    SerialConnectionService.HidePollingTelemetry = value;
                     OnPropertyChanged();
                 }
             }
-        }
-
-        public int HandshakeTimeoutMilliseconds
-        {
-            get => _serialConnectionService.HandshakeTimeoutMilliseconds;
-            set => _serialConnectionService.HandshakeTimeoutMilliseconds = value;
         }
 
         public int PollingIntervalMilliseconds
@@ -1031,12 +1028,7 @@ namespace MLAstroRPA.Plugin
             {
                 OnPropertyChanged(nameof(IsExternalLocked));
                 OnPropertyChanged(nameof(IsExternalUnlocked));
-                OnPropertyChanged(nameof(IsPauseQuery));
             });
-            // Watch PauseQueryGlobal so the checkbox always shows the real state: TPPA borrows the port or
-            // the operator toggles it by hand.
-            _onPauseQueryChanged = paused => OnPropertyChanged(nameof(IsPauseQuery));
-            SerialConnectionService.PauseQueryChanged += _onPauseQueryChanged;
 
             // The wireless transport changes state on a background thread, so marshal to the UI thread
             // before the bindings are notified.
@@ -1942,12 +1934,6 @@ namespace MLAstroRPA.Plugin
             }
 
             if (string.IsNullOrEmpty(e.PropertyName)
-                || e.PropertyName == nameof(SerialConnectionService.HandshakeTimeoutMilliseconds))
-            {
-                OnPropertyChanged(nameof(HandshakeTimeoutMilliseconds));
-            }
-
-            if (string.IsNullOrEmpty(e.PropertyName)
                 || e.PropertyName == nameof(SerialConnectionService.PollingIntervalMilliseconds))
             {
                 OnPropertyChanged(nameof(PollingIntervalMilliseconds));
@@ -2057,12 +2043,6 @@ namespace MLAstroRPA.Plugin
                 if (Settings != null)
                 {
                     Settings.PropertyChanged -= OnSettingsPropertyChanged;
-                }
-
-                // Unsubscribe from pause-query change event
-                if (_onPauseQueryChanged != null)
-                {
-                    SerialConnectionService.PauseQueryChanged -= _onPauseQueryChanged;
                 }
 
                 // Unsubscribe from serial connection service events

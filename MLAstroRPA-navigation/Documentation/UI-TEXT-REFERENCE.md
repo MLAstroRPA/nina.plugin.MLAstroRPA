@@ -88,7 +88,7 @@ Tài liệu liệt kê toàn bộ text hiển thị trên trang **Options** củ
 | Khu vực | Text hiển thị |
 |---|---|
 | Kiểu kết nối | `Connection type` → `Serial connection` / `Wireless connection` |
-| Serial | `COM Port` · nút `Connect`/`Disconnect` (động `SerialConnectButtonText`) · `Reset ESP32` · `AutoReconnectStatus` (động) · `SerialConnectionStatus` (động) · `Handshake: ` + `SerialHandshakeStatus` (động) · `Pause polling '?'` |
+| Serial | `COM Port` · nút `Connect`/`Disconnect` (động `SerialConnectButtonText`) · `Reset ESP32` · `AutoReconnectStatus` (động) · `SerialConnectionStatus` (động) · `Handshake: ` + `SerialHandshakeStatus` (động) · `Hide polling telemetry on terminal` |
 | Serial – timing | `Handshake Timeout:` + `ms (300 - 5000)` · `Polling Period:` + `ms (100 - 1000)` |
 | Wireless | `Address:` + `hostname (MLAstroRPA.local) or device IP` · `Reset ESP32` · `System log:` · nút `⚠ RESET ERROR` / `Export CSV` / `Clear` · context menu: `Copy` / `Clear` |
 | Terminal (cả 2 chế độ) | `Serial Terminal` · nút `Send` · checkbox `Hex` · context menu: `Copy`, `Clear`, `Hex display` |

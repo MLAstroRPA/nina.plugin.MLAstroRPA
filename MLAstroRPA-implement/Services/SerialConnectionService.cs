@@ -36,6 +36,9 @@ namespace MLAstroRPA.Services
         private const int ConnectionCheckFailThreshold = 3;
         public const int HandshakeTimeoutMinMilliseconds = 100;
         public const int HandshakeTimeoutMaxMilliseconds = 5000;
+
+        /// <summary>Timeout of the handshake reply. FIXED - the value is not user-configurable any more.</summary>
+        public const int HandshakeTimeoutFixedMilliseconds = 300;
         private int _handshakeTimeoutMilliseconds = 300;
 
         public const int PollingIntervalMinMilliseconds = 100;
@@ -45,10 +48,8 @@ namespace MLAstroRPA.Services
         // Static flag to pause query on ALL instances
         private static bool _pauseQueryGlobal;
 
-        /// <summary>Raised when <see cref="PauseQueryGlobal"/> changes (automatically while TPPA borrows or returns the port, or by hand)
-        /// so the "Pause polling '?'" checkbox always mirrors the real state.</summary>
-        public static event Action<bool> PauseQueryChanged;
-
+        /// <summary>Pauses the "?" polling. Set automatically while another consumer (TPPA) borrows the port;
+        /// it is no longer a user option.</summary>
         public static bool PauseQueryGlobal
         {
             get => _pauseQueryGlobal;
@@ -57,7 +58,24 @@ namespace MLAstroRPA.Services
                 if (_pauseQueryGlobal == value) return;
                 _pauseQueryGlobal = value;
                 Logger.Info($"[MLAstro] PauseQueryGlobal set to: {value}");
-                try { PauseQueryChanged?.Invoke(value); } catch { }
+            }
+        }
+
+        private static bool _hidePollingTelemetry;
+
+        /// <summary>
+        /// Keeps the polling noise out of the terminal log: the "?" query sent every poll interval and the
+        /// telemetry frame the device answers with. Real commands and their replies are still shown.
+        /// Set from the CONNECTION tab.
+        /// </summary>
+        public static bool HidePollingTelemetry
+        {
+            get => _hidePollingTelemetry;
+            set
+            {
+                if (_hidePollingTelemetry == value) return;
+                _hidePollingTelemetry = value;
+                Logger.Info($"[MLAstro] HidePollingTelemetry set to: {value}");
             }
         }
 
@@ -371,7 +389,9 @@ namespace MLAstroRPA.Services
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
             // Load persisted timing settings (clamped to valid ranges)
-            _handshakeTimeoutMilliseconds = Math.Clamp(_settings.HandshakeTimeoutMilliseconds, HandshakeTimeoutMinMilliseconds, HandshakeTimeoutMaxMilliseconds);
+            // FIXED at 300 ms (there is no input box any more): the ESP answers the handshake well within it, and
+            // a value stored by an older build is deliberately ignored.
+            _handshakeTimeoutMilliseconds = HandshakeTimeoutFixedMilliseconds;
             _pollingIntervalMilliseconds = Math.Clamp(_settings.PollingIntervalMilliseconds, PollingIntervalMinMilliseconds, PollingIntervalMaxMilliseconds);
 
             Logger.Info("[MLAstro] SerialConnectionService created");
@@ -1695,7 +1715,7 @@ namespace MLAstroRPA.Services
 
         /// <summary>
         /// Runs every second: a handshook link that stays silent past LinkWatchdogTimeoutMs disconnects itself.
-        /// Skipped when: not connected - the handshake has not finished (the handshake path reports NO ANSWER itself) -
+        /// Skipped when: not connected - the handshake has not finished (the handshake path reports TIME OUT itself) -
         /// the "?" poll is paused on Serial (TPPA borrows the port - the silence is INTENTIONAL).
         /// </summary>
         private void CheckLinkWatchdog()
@@ -1866,7 +1886,7 @@ namespace MLAstroRPA.Services
 
                 // The device is alive if it answers with ANY line within the timeout.
                 // This avoids the old bug where '?' returns telemetry (not "ok"), so waiting
-                // for an explicit "ok" could spuriously report "NO ANSWER".
+                // for an explicit "ok" could spuriously report "TIME OUT".
                 var alive = await SendAndAwaitAnyAsync(ConnectionCheckCommand).ConfigureAwait(false);
 
                 if (alive)
@@ -2224,7 +2244,7 @@ namespace MLAstroRPA.Services
 
         private void UpdateHandshakeStatus(bool isOk)
         {
-            InvokeOnUiThread(() => HandshakeStatus = isOk ? "OK!" : "NO ANSWER");
+            InvokeOnUiThread(() => HandshakeStatus = isOk ? "OK!" : "TIME OUT");
         }
 
         private void ResetPendingHandshakeState()
@@ -2242,6 +2262,13 @@ namespace MLAstroRPA.Services
 
         private void AppendTerminalEntry(SerialTerminalEntry entry)
         {
+            // "Hide polling telemetry": the terminal would otherwise be flooded by the poll query sent every
+            // interval and the telemetry line it answers with, burying the real commands and their replies.
+            if (HidePollingTelemetry && entry != null && entry.IsPollingTraffic)
+            {
+                return;
+            }
+
             InvokeOnUiThread(() =>
             {
 
@@ -2758,6 +2785,31 @@ namespace MLAstroRPA.Services
             SerialTerminalEntryType.Disconnected => "🔔 ",
             _ => string.Empty
         };
+
+        /// <summary>
+        /// True for polling noise only: the "?" query the plugin sends every poll interval (Sent) and the
+        /// telemetry frame the device answers with (Received - the firmware frames telemetry with '&lt;').
+        /// Used by the "Hide polling telemetry on terminal" option.
+        /// </summary>
+        public bool IsPollingTraffic
+        {
+            get
+            {
+                if (_payload == null || _payload.Length == 0)
+                {
+                    return false;
+                }
+
+                var text = _encoding.GetString(_payload);
+
+                return EntryType switch
+                {
+                    SerialTerminalEntryType.Sent => text.Trim() == "?",
+                    SerialTerminalEntryType.Received => text.TrimStart().StartsWith("<"),
+                    _ => false
+                };
+            }
+        }
 
         public static SerialTerminalEntry Sent(byte[] payload, Encoding encoding, bool hexDisplay)
             => new(SerialTerminalEntryType.Sent, payload, null, encoding, hexDisplay);

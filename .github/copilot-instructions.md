@@ -45,4 +45,4 @@
   16 hex characters and send them as the corresponding hex bytes.
 - HandShake over Serial: the handshake sequence is "[MLAstroRPA-TC]" sent to the connected serial
   device; expect "OK!" ("ok,...") as the response. Show "Handshake: OK!" when the response matches,
-  otherwise "Handshake: NO ANSWER".
+  otherwise "Handshake: TIME OUT" (no reply within the fixed 300 ms handshake timeout).

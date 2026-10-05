@@ -1,8 +1,10 @@
 ﻿<ResourceDictionary x:Class="MLAstroRPA.Plugin.MLAstroOptions"
                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="clr-namespace:MLAstroRPA.Plugin"
                     xmlns:view="clr-namespace:MLAstroRPA.Dockables">
     <BooleanToVisibilityConverter x:Key="MlaRpaBoolToVis" />
+    <conv:StatusBrushConverter x:Key="MlaRpaStatusBrush" />
 
         <!-- CONTROL tab body (hosted with DataContext = MLAstroController) -->
     <DataTemplate x:Key="MlaRpaControlBody">
@@ -101,7 +103,7 @@
 
                         <TextBlock Text="{Binding SerialConnectionStatus}"
                                    TextWrapping="Wrap"
-                                   Foreground="Gray"
+                                   Foreground="{Binding SerialConnectionStatus, Converter={StaticResource MlaRpaStatusBrush}}"
                                    FontSize="11"
                                    Margin="0,0,0,4" />
 
@@ -110,38 +112,18 @@
                                        Foreground="Gray"
                                        FontSize="11" />
                             <TextBlock Text="{Binding SerialHandshakeStatus}"
-                                       Foreground="Gray"
+                                       Foreground="{Binding SerialHandshakeStatus, Converter={StaticResource MlaRpaStatusBrush}}"
                                        FontSize="11" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <!-- Locks the switch while TPPA borrows the port (external control): the '?' poll auto-pauses then,
-                                 so the user cannot toggle it during a TPPA session. It unlocks when TPPA hands the port back. -->
-                            <CheckBox IsChecked="{Binding IsPauseQuery, Mode=TwoWay}"
-                                      IsEnabled="{Binding IsExternalUnlocked}"
+                            <CheckBox IsChecked="{Binding IsHidePollingTelemetry, Mode=TwoWay}"
                                       VerticalAlignment="Center"
                                       Margin="0,0,8,0" />
-                            <TextBlock Text="Pause polling '?'"
+                            <TextBlock Text="Hide polling telemetry on terminal"
                                        VerticalAlignment="Center"
-                                       FontSize="12" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <TextBlock Text="Handshake Timeout:"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,8,0"
-                                       FontSize="12" />
-                            <TextBox Text="{Binding HandshakeTimeoutMilliseconds, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                     Width="70"
-                                     MaxLength="4"
-                                     VerticalAlignment="Center"
-                                     PreviewTextInput="OnNumericOnlyPreviewTextInput"
-                                     KeyDown="OnTimingTextBoxKeyDown" />
-                            <TextBlock Text="ms (300 - 5000)"
-                                       VerticalAlignment="Center"
-                                       Foreground="Gray"
-                                       FontSize="11"
-                                       Margin="8,0,0,0" />
+                                       FontSize="12"
+                                       ToolTip="Hides the '?' poll sent on every interval and the telemetry line it answers with; commands and replies are still shown." />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">

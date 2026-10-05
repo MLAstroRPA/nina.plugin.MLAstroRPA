@@ -1390,7 +1390,7 @@ namespace MLAstroRPA.Dockables
                 ConnectionStatusText = "Connected";
                 ControlsVisibility = Visibility.Visible;
             }
-            else if (_serialService.IsConnected && _serialService.HandshakeStatus == "NO ANSWER")
+            else if (_serialService.IsConnected && _serialService.HandshakeStatus == "TIME OUT")
             {
                 ConnectionStatusColor = Brushes.Red;
                 ConnectionStatusText = "Disconnected";

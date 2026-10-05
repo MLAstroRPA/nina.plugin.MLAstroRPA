@@ -24,7 +24,7 @@ The plugin options page is a single page with top-level tabs:
 | **CONTROL** | the same view as the dock panel: jog/relative, align, positions, error readout, alarm history |
 | **HARDWARE SETTING** | soft limits, motor driver (TMC2209) AZ/ALT, backlash, WiFi configuration — needs a live link (Serial or Wireless) |
 | **SOFTWARE SETTING** | external correction over the message broker (assign switch, correction axis mode, correction factor, maximum step per correction, automated adjustment settle time, software overshoot, software reverse directions) plus the bridge status and broker log |
-| **CONNECTION** | connection type (Serial / Wireless), auto scan COM port, COM port and auto-reconnect, handshake status, pause polling, handshake timeout & polling period, wireless address, Reset ESP32, system log and the serial terminal (Hex + Send) |
+| **CONNECTION** | connection type (Serial / Wireless), auto scan COM port, COM port and auto-reconnect, handshake status, hide polling telemetry on the terminal, handshake timeout & polling period, wireless address, Reset ESP32, system log and the serial terminal (Hex + Send) |
 
 ## Architecture
 

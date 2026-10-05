@@ -405,10 +405,18 @@ namespace MLAstroRPA.Services
             if (completed != _handshakeTcs.Task || !_handshakeTcs.Task.Result)
             {
                 var reason = HandshakeStatus;
-                ConnectionStatus = string.IsNullOrWhiteSpace(reason)
-                    ? "Handshake failed (no answer from device)."
-                    : $"Handshake refused: {reason}";
-                AppendLog($"ERROR: handshake failed - {reason}");
+                if (string.IsNullOrWhiteSpace(reason))
+                {
+                    // No answer within the handshake timeout: report it on the handshake line like the Serial path.
+                    HandshakeStatus = "TIME OUT";
+                    ConnectionStatus = "Handshake failed: TIME OUT.";
+                }
+                else
+                {
+                    ConnectionStatus = $"Handshake refused: {reason}";
+                }
+
+                AppendLog($"ERROR: handshake failed - {HandshakeStatus}");
                 AbortSocket();
                 return false;
             }
