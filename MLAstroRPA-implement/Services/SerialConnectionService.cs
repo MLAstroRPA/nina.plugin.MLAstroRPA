@@ -1296,6 +1296,11 @@ namespace MLAstroRPA.Services
             if (!string.IsNullOrWhiteSpace(settings.WifiSsid))
                 parts.Add($"STAs:{settings.WifiSsid}");
 
+            // mDNS hostname (#23): SAVE-ONLY like the Web UI - the firmware keeps it in RAM and writes FRAM
+            // on Save&Reboot (the plugin reboots the ESP afterwards), so it is not sent on Apply.
+            if (includeSaveAndReboot && !string.IsNullOrWhiteSpace(settings.MdnsName))
+                parts.Add($"MDns:{settings.MdnsName}");
+
             // Add Save&Reboot command at the end when persisting settings
             if (includeSaveAndReboot)
             {
@@ -3015,6 +3020,11 @@ namespace MLAstroRPA.Services
                         break;
                     case "STAs":
                         settings.WifiSsid = value;
+                        break;
+                    case "MDns":
+                        // Device hostname; empty means the firmware did not report one (keep what we have).
+                        if (!string.IsNullOrWhiteSpace(value))
+                            settings.MdnsName = value;
                         break;
                     case "STAp":
                         settings.WifiPass = value;

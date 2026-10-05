@@ -161,6 +161,7 @@ the dock; both are refused while anything is moving (`error: Busy`) and the save
 *   `APpa:?\n` : **Query AP Password Only**. Returns `APpa:X\n` (Access Point password).
 *   `APip:X\n` : Set Access Point IP Address (e.g., `192.168.4.1`).
 *   `APma` : *(Read-Only)* Access Point MAC address (available in Telemetry).
+*   `MDns:X\n` : Set the mDNS hostname (the device is reached at `X.local`) - 1-31 characters, letters/digits/hyphen only (other characters are dropped, like the Web UI). **Save-only**: the name is used for the DHCP hostname and `MDNS.begin()`, so it is written to FRAM by `Save&Reboot` and applies after the reboot. An empty parameter keeps the stored name.
 *   *(Note: Access Point subnet `APsu` is always `255.255.255.0` by default, and Station IP `STAi` can be read via Telemetry).*
 
 > ⚠️ **Quy ước cho các lệnh ghi mạng `STAs` / `STAp` / `APss` / `APpa` / `APip`: tham số RỖNG =**
@@ -202,6 +203,7 @@ The ESP32 will reply immediately with a data string formatted as follows:
 *   **Backlash:** `Back` (Enabled: 1/0), `Over` (Overshoot Routine Enabled: 1/0), `OvD`/`OvM`/`OvS` (Overshoot Amount: Degrees/Minutes/Seconds), `OvUp`/`OvDn` (Move Up/Down Overshoot Enabled: 1/0), `AzBl`/`AlBl` (Backlash Steps).
 *   **Access Point:** `APss` (SSID), `APma` (MAC), `APip` (IP), `APsu` (Subnet).
 *   **Station (WiFi):** `STAs` (SSID), `STAm` (MAC), `STAi` (Current IP assigned by router).
+*   **mDNS:** `MDns` (device hostname; the device answers at `<MDns>.local`).
 
 ---
 

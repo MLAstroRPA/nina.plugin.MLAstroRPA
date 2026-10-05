@@ -222,6 +222,15 @@ namespace MLAstroRPA.Plugin
             e.Handled = e.Text == null || e.Text.Any(c => !char.IsDigit(c));
         }
 
+        private void OnMdnsNamePreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // Keeps the hostname charset the firmware and the Web UI accept: a-z A-Z 0-9 and '-'.
+            e.Handled = e.Text == null || e.Text.Any(c => !IsHostnameChar(c));
+        }
+
+        private static bool IsHostnameChar(char c)
+            => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
+
         private void OnTimingTextBoxKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Enter)

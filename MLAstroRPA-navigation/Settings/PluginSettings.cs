@@ -431,6 +431,16 @@ namespace MLAstroRPA.Settings
             set => SetString(value);
         }
 
+        /// <summary>
+        /// Hostname of the device on the network (firmware stores the bare name and appends ".local" itself).
+        /// Only letters, digits and '-' are valid; the default matches the firmware factory name "mlastrorpa".
+        /// </summary>
+        public string MdnsName
+        {
+            get => GetString(nameof(MdnsName), "mlastrorpa");
+            set => SetString(value);
+        }
+
         public string ApPass
         {
             get => GetString(nameof(ApPass), string.Empty);

@@ -1039,6 +1039,7 @@ namespace MLAstroRPA.Services
                 // can differ from reality when the AP comes up with a fallback value.
                 AddToken(tokens, "APip", string.IsNullOrWhiteSpace(_apIp) ? Get(ap, "ip") : _apIp);
                 AddToken(tokens, "APsu", Get(ap, "subnet"));
+                AddToken(tokens, "MDns", Get(ap, "mdns"));   // mDNS name of the device (firmware #23)
             }
 
             // The STA info sits at the TOP LEVEL of the frame (the firmware keeps the old ip/ssid names for the web UI).
@@ -1192,7 +1193,7 @@ namespace MLAstroRPA.Services
             var tokens = ParseCommandLine(text);
             if (tokens.Count == 0) return false;
 
-            var isConfig = tokens.Keys.Any(k => ConfigKeyMap.ContainsKey(k));
+            var isConfig = tokens.Keys.Any(k => ConfigKeyMap.ContainsKey(k) || TopLevelConfigKeys.ContainsKey(k));
             var hasSaveAndReboot = tokens.Keys.Any(k => k.Equals("Save&Reboot", StringComparison.OrdinalIgnoreCase));
 
             if (!isConfig)
@@ -1293,10 +1294,20 @@ namespace MLAstroRPA.Services
             ["STAp"] = ("wifi", "pass", false),
         };
 
-        /// <summary>Configuration groups that only apply when SAVING (saveConfig) - WiFi/AP.</summary>
+        /// <summary>
+        /// Config tokens the firmware expects at the TOP LEVEL of the payload instead of inside a group:
+        /// the mDNS name is a device-level field (`mdns_name`), not part of the wifi_ap/wifi sections.
+        /// </summary>
+        private static readonly Dictionary<string, string> TopLevelConfigKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MDns"] = "mdns_name",
+        };
+
+        /// <summary>Configuration groups/fields that only apply when SAVING (saveConfig) - WiFi/AP and the mDNS name.</summary>
         private static bool IsSaveOnlySection(string section)
             => section.Equals("wifi", StringComparison.OrdinalIgnoreCase)
-               || section.Equals("wifi_ap", StringComparison.OrdinalIgnoreCase);
+               || section.Equals("wifi_ap", StringComparison.OrdinalIgnoreCase)
+               || section.Equals("mdns_name", StringComparison.OrdinalIgnoreCase);
 
         private Dictionary<string, object> BuildConfigPayload(Dictionary<string, string> tokens)
         {
@@ -1312,10 +1323,21 @@ namespace MLAstroRPA.Services
                 section[map.Field] = map.IsBool ? (object)(kv.Value == "1") : ParseNumber(kv.Value);
             }
 
-            return sections.ToDictionary(
+            var payload = sections.ToDictionary(
                 s => s.Key,
                 s => (object)s.Value,
                 StringComparer.OrdinalIgnoreCase);
+
+            // Top-level fields (mDNS name): an empty value means "keep the name stored on the device".
+            foreach (var kv in tokens)
+            {
+                if (TopLevelConfigKeys.TryGetValue(kv.Key, out var field) && !string.IsNullOrWhiteSpace(kv.Value))
+                {
+                    payload[field] = kv.Value;
+                }
+            }
+
+            return payload;
         }
 
         private static object ParseNumber(string value)

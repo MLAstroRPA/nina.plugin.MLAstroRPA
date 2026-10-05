@@ -341,43 +341,59 @@
                 <Expander Header="Soft Limits (Degrees)" Margin="0,0,0,15" IsExpanded="True"
                           Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource MlaRpaBoolToVis}}">
                     <StackPanel Margin="10">
-                        <TextBlock Text="AZ Limits" FontWeight="SemiBold" Margin="0,0,0,8" />
-                        <WrapPanel Margin="0,0,0,10">
-                            <StackPanel Width="220" Margin="0,0,10,10">
-                                <TextBlock Text="AZ Min" Margin="0,0,0,5" />
-                                <TextBox Text="{Binding Settings.LimitAzMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Width="220" Margin="0,0,10,10">
-                                <TextBlock Text="AZ Max" Margin="0,0,0,5" />
-                                <TextBox Text="{Binding Settings.LimitAzMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </WrapPanel>
-                        <TextBlock Text="ALT Limits" FontWeight="SemiBold" Margin="0,0,0,8" />
-                        <WrapPanel>
-                            <StackPanel Width="220" Margin="0,0,10,10">
-                                <TextBlock Text="ALT Min" Margin="0,0,0,5" />
-                                <TextBox Text="{Binding Settings.LimitAltMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Width="220" Margin="0,0,10,10">
-                                <TextBlock Text="ALT Max" Margin="0,0,0,5" />
-                                <TextBox Text="{Binding Settings.LimitAltMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                        </WrapPanel>
+                        <GroupBox Margin="0,0,0,10">
+                            <GroupBox.Header>
+                                <TextBlock Text="AZ Limits"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
+                            <WrapPanel Margin="10">
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="AZ Min" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.LimitAzMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="AZ Max" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.LimitAzMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </WrapPanel>
+                        </GroupBox>
+                        <GroupBox>
+                            <GroupBox.Header>
+                                <TextBlock Text="ALT Limits"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
+                            <WrapPanel Margin="10">
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="ALT Min" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.LimitAltMin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel Width="220" Margin="0,0,10,10">
+                                    <TextBlock Text="ALT Max" Margin="0,0,0,5" />
+                                    <TextBox Text="{Binding Settings.LimitAltMax, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </WrapPanel>
+                        </GroupBox>
                     </StackPanel>
                 </Expander>
 
                 <Expander Header="Motor Driver (TMC2209)" Margin="0,0,0,15" IsExpanded="True"
                           Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource MlaRpaBoolToVis}}">
                     <StackPanel Margin="10">
-                        <GroupBox Header="AZ Motor" Margin="0,0,0,10">
+                        <!-- The NINA theme paints the built-in GroupBox header at its own larger size and ignores
+                             the control's FontSize; a TextBlock header with a LOCAL size always wins, so the
+                             sub-title ends up the same size as the Expander titles used for the sections. -->
+                        <GroupBox Margin="0,0,0,10">
+                            <GroupBox.Header>
+                                <TextBlock Text="AZ Motor"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
                             <StackPanel Margin="10">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <CheckBox IsChecked="{Binding Settings.AzReverse, Mode=TwoWay}"
                                               VerticalAlignment="Center"
                                               Margin="0,0,8,0" />
                                     <TextBlock Text="Reverse Direction"
-                                               VerticalAlignment="Center"
-                                               FontSize="14" />
+                                               VerticalAlignment="Center" />
                                 </StackPanel>
                                 <WrapPanel>
                                     <StackPanel Width="220" Margin="0,0,10,10">
@@ -435,15 +451,18 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <GroupBox Header="ALT Motor">
+                        <GroupBox>
+                            <GroupBox.Header>
+                                <TextBlock Text="ALT Motor"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
                             <StackPanel Margin="10">
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <CheckBox IsChecked="{Binding Settings.AltReverse, Mode=TwoWay}"
                                               VerticalAlignment="Center"
                                               Margin="0,0,8,0" />
                                     <TextBlock Text="Reverse Direction"
-                                               VerticalAlignment="Center"
-                                               FontSize="14" />
+                                               VerticalAlignment="Center" />
                                 </StackPanel>
                                 <WrapPanel>
                                     <StackPanel Width="220" Margin="0,0,10,10">
@@ -511,8 +530,7 @@
                                       VerticalAlignment="Center"
                                       Margin="0,0,8,0" />
                             <TextBlock Text="Enable Anti Backlash on firmware"
-                                       VerticalAlignment="Center"
-                                       FontSize="14" />
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                         <WrapPanel Margin="24,0,0,10">
                             <StackPanel Width="220" Margin="0,0,10,10">
@@ -527,10 +545,42 @@
                     </StackPanel>
                 </Expander>
 
-                <Expander Header="WiFi Configuration" Margin="0,0,0,15" IsExpanded="True"
+                <Expander Header="Network config" Margin="0,0,0,15" IsExpanded="True"
                           Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource MlaRpaBoolToVis}}">
                     <StackPanel Margin="10">
-                        <GroupBox Header="Access Point (Hotspot)" Margin="0,0,0,10">
+                        <!-- mDNS hostname (firmware #23). The ".local" tail follows the typed text like the Web UI:
+                             the first TextBlock renders the SAME text but hidden, so it takes exactly the width of
+                             the name and the visible ".local" starts right behind it. -->
+                        <GroupBox Margin="0,0,0,10">
+                            <GroupBox.Header>
+                                <TextBlock Text="mDNS Name"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
+                            <Grid Width="220"
+                                  HorizontalAlignment="Left"
+                                  Margin="10"
+                                  ClipToBounds="True"
+                                  ToolTip="Name of the device on the network: 1-31 characters (letters, digits, hyphen). Default mlastrorpa.local - takes effect after SAVE ALL &amp; REBOOT.">
+                                <TextBox x:Name="MdnsNameBox"
+                                         Padding="5,2"
+                                         MaxLength="31"
+                                         PreviewTextInput="OnMdnsNamePreviewTextInput"
+                                         Text="{Binding Settings.MdnsName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal"
+                                            IsHitTestVisible="False"
+                                            VerticalAlignment="Center"
+                                            Margin="6,0,0,0">
+                                    <TextBlock Text="{Binding Text, ElementName=MdnsNameBox}" Visibility="Hidden" />
+                                    <TextBlock Text=".local" Foreground="Gray" />
+                                </StackPanel>
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Margin="0,0,0,10">
+                            <GroupBox.Header>
+                                <TextBlock Text="Access Point (Hotspot)"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
                             <WrapPanel Margin="10">
                                 <StackPanel Width="220" Margin="0,0,10,10">
                                     <TextBlock Text="AP SSID" Margin="0,0,0,5" />
@@ -570,7 +620,11 @@
                             </WrapPanel>
                         </GroupBox>
 
-                        <GroupBox Header="Station Mode (Connect to Router)">
+                        <GroupBox>
+                            <GroupBox.Header>
+                                <TextBlock Text="Station Mode (Connect to Router)"
+                                           FontSize="{Binding FontSize, RelativeSource={RelativeSource AncestorType={x:Type Expander}}}" />
+                            </GroupBox.Header>
                             <WrapPanel Margin="10">
                                 <StackPanel Width="220" Margin="0,0,10,10">
                                     <TextBlock Text="WiFi SSID" Margin="0,0,0,5" />
@@ -613,22 +667,34 @@
                 <!-- Configuration Management -->
                 <Border Padding="10" Margin="0,0,0,15" CornerRadius="5"
                         Visibility="{Binding IsHandshakeSuccessful, Converter={StaticResource MlaRpaBoolToVis}}">
-                    <StackPanel>
+                    <StackPanel Grid.IsSharedSizeScope="True">
                         <TextBlock Text="💾 Configuration Management"
                                    FontWeight="Bold"
-                                   FontSize="14"
                                    Margin="0,0,0,10" />
-                        <Button Content="⚡ APPLY SETTINGS"
-                                Height="36"
-                                Margin="0,0,0,8"
-                                Command="{Binding ApplySettingsCommand}" />
-                        <Button Content="✓ SAVE ALL &amp; REBOOT"
-                                Height="36"
-                                Margin="0,0,0,8"
-                                Command="{Binding SaveAllSettingsCommand}" />
-                        <Button Content="⏻ REBOOT"
-                                Height="36"
-                                Command="{Binding RebootCommand}" />
+                        <!-- One row of equally wide buttons: the wide "SAVE ALL &amp; REBOOT" text sets
+                             the shared column width (the web UI style) and the buttons stop stretching
+                             to the panel width. -->
+                        <Grid HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MlaRpaConfigButtons" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MlaRpaConfigButtons" />
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="MlaRpaConfigButtons" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="⚡ APPLY SETTINGS"
+                                    Height="36"
+                                    Margin="0,0,8,0"
+                                    Command="{Binding ApplySettingsCommand}" />
+                            <Button Grid.Column="1"
+                                    Content="✓ SAVE ALL &amp; REBOOT"
+                                    Height="36"
+                                    Margin="0,0,8,0"
+                                    Command="{Binding SaveAllSettingsCommand}" />
+                            <Button Grid.Column="2"
+                                    Content="⏻ REBOOT"
+                                    Height="36"
+                                    Command="{Binding RebootCommand}" />
+                        </Grid>
                         <TextBlock Text="Apply sends settings to device memory without saving. Save All persists to FRAM and reboots the device."
                                    TextWrapping="Wrap"
                                    Foreground="Gray"
