@@ -25,6 +25,12 @@ namespace MLAstroRPA.Services
     public class SerialConnectionService : INotifyPropertyChanged, IDisposable
     { 
         private const int MaxTerminalEntries = 500;
+
+        /// <summary>
+        /// Safety cap for the pending receive buffer: a stream that never sends a newline must not grow the
+        /// buffer forever (the leftover is flushed to the terminal and dropped instead).
+        /// </summary>
+        private const int MaxPendingLineCharacters = 8192;
         private const string InitialHandshakeCommand = "[MLAstroRPA-TC]\n";
         private const string ConnectionCheckCommand = "?\n";
         private const int PortOpenTimeoutMilliseconds = 3000;
@@ -1358,11 +1364,13 @@ namespace MLAstroRPA.Services
                 }
 
                 TouchLinkAlive();   // feeds the watchdog: data just arrived from the device over COM
-                AppendTerminalEntry(SerialTerminalEntry.Received(buffer, _serialPort.Encoding, HexDisplay));
                 var receivedText = _serialPort.Encoding.GetString(buffer);
 
                 // Frame the incoming stream by newline and classify each complete line into:
                 //  1) Telemetry (<...), 2) pending command answer (ok/error), 3) spontaneous firmware responses.
+                // The TERMINAL shows the assembled LINES, not the raw read chunks: one telemetry frame is longer
+                // than a single COM read, so a chunk can start with the tail of the previous line and stop in the
+                // middle of the next one - logging chunks would split one frame into two unreadable entries.
                 _lineBuffer.Append(receivedText);
                 var buf = _lineBuffer.ToString();
                 int nl;
@@ -1372,12 +1380,22 @@ namespace MLAstroRPA.Services
                     buf = buf.Substring(nl + 1);
                     if (line.Length > 0)
                     {
+                        AppendTerminalEntry(SerialTerminalEntry.Received(
+                            _serialPort.Encoding.GetBytes(line), _serialPort.Encoding, HexDisplay));
                         RouteLine(line);
                         RaiseExternalLine(line);
                     }
                 }
                 _lineBuffer.Clear();
                 _lineBuffer.Append(buf);
+
+                // A stream without newlines would otherwise accumulate in the buffer forever.
+                if (_lineBuffer.Length > MaxPendingLineCharacters)
+                {
+                    AppendTerminalEntry(SerialTerminalEntry.Received(
+                        _serialPort.Encoding.GetBytes(_lineBuffer.ToString()), _serialPort.Encoding, HexDisplay));
+                    _lineBuffer.Clear();
+                }
             }
             catch (Exception ex)
             {
