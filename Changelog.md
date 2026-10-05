@@ -1,62 +1,71 @@
 ﻿# Changelog
 
+## 3.2.0.0 — 2026-10-05
+
+- Added — NETWORK CONFIG gets an "mDNS Name" group box (the `.local` tail follows the typed name): the name is sent to the device on SAVE ALL & REBOOT over Serial (`MDns:`) and over the wireless link (`mdns_name`) and read back from the telemetry, so the plugin can rename the controller like the Web UI does
+- Added — "Hide polling telemetry on terminal" replaces the "Pause polling '?'" option: the terminal drops the "?" poll and the telemetry line it answers with and keeps the real commands and their replies
+- Fixed — the terminal logs the assembled lines instead of the raw COM read chunks, so one telemetry frame split across reads is shown complete and the polling filter matches it exactly
+- Changed — the handshake timeout is fixed at 300 ms (the input box is gone) and a failed handshake is reported as `Handshake: TIME OUT`
+- Changed — the connection and handshake status lines are coloured by what they say: green for connected / handshake OK, orange for disconnected, red for a connect failure or a handshake time out
+- Changed — HARDWARE SETTING uses one title size for every section and sub-section, the sub-sections (AZ/ALT Limits, AZ/ALT Motor, mDNS Name, Access Point, Station Mode) are group boxes and the Configuration Management buttons sit on one row at their natural width
+
 ## 3.1.3.0 — 2026-10-01
 
-### Changed — the AP and STA icons in the header bar are vector drawings in the web UI style instead of emoji or glyph text, and the STA bars are graded by the live RSSI over Wireless or by the `WRs` telemetry token over Serial
-### Added — the dock locks the four arrow buttons while a relative move started there is still travelling: the lock is released when the firmware reports the motion ended, with a grace for a step that never reports motion and a 10 minute safety net
-### Added — the CONNECTION tab locks the Connect button while the wireless address is being resolved (mDNS/DNS) and releases it as soon as the resolve succeeds or fails
-### Fixed — the System log panel no longer stays frozen at the lines of the first load: switching tabs dropped the collection handler without clearing the already-bound marker, so new lines and Clear had no visible effect
-### Added — the Polar Alignment section gets the same **SAVE ALIGNED POSITION** / **FALLBACK SAVED POSITION** buttons as the Web UI, on one row with ALIGN ALL and the same size; over Serial they send `SvPA` / `FbPA`, over the wireless link they are translated into `saveAlignedPosition` / `fallbackAlignedPosition`
-### Fixed — the wireless RSSI is forwarded to the dock as the `WRs` token and a missing reading is told apart from 0 dBm, so the signal bars grade the same over Wireless and Serial
+- Changed — the AP and STA icons in the header bar are vector drawings in the web UI style instead of emoji or glyph text, and the STA bars are graded by the live RSSI over Wireless or by the `WRs` telemetry token over Serial
+- Added — the dock locks the four arrow buttons while a relative move started there is still travelling: the lock is released when the firmware reports the motion ended, with a grace for a step that never reports motion and a 10 minute safety net
+- Added — the CONNECTION tab locks the Connect button while the wireless address is being resolved (mDNS/DNS) and releases it as soon as the resolve succeeds or fails
+- Fixed — the System log panel no longer stays frozen at the lines of the first load: switching tabs dropped the collection handler without clearing the already-bound marker, so new lines and Clear had no visible effect
+- Added — the Polar Alignment section gets the same **SAVE ALIGNED POSITION** / **FALLBACK SAVED POSITION** buttons as the Web UI, on one row with ALIGN ALL and the same size; over Serial they send `SvPA` / `FbPA`, over the wireless link they are translated into `saveAlignedPosition` / `fallbackAlignedPosition`
+- Fixed — the wireless RSSI is forwarded to the dock as the `WRs` token and a missing reading is told apart from 0 dBm, so the signal bars grade the same over Wireless and Serial
 
 ## 3.1.2.0 — 2026-10-01
 
-### Changed — the automated adjustment settle time is now waited on the TPPA side (sent along with the measurement request), so the wait shows up in the TPPA status bar as "Settling" exactly like the adjustment systems TPPA drives on its own, and this plugin no longer blocks its own status line with a settle text the firmware telemetry overwrote
-### Changed — an axis whose direction is already confirmed is no longer cancelled as a wrong direction: an error that keeps growing on the reference side only warns while the correction goes on, and the session is stopped after three growing measurements in a row with a note that states what was measured; the wrong-direction verdict (auto change or cancel with the manual hint) is left to an axis that is still probing its direction
-### Fixed — an axis that was not commanded by the previous step (held inside the tolerance, or a verify-only measurement) is not judged on growth any more, so an error that moves with the sky, the mount or the tripod can no longer be reported as a wrong correction direction
-### Changed — the MSI bundle now ships the TPPA DLL rebuilt from the current TPPA sources (waits the settle time the controller asks for before capturing), so the settle behaviour is kept when the installer replaces both plugins
+- Changed — the automated adjustment settle time is now waited on the TPPA side (sent along with the measurement request), so the wait shows up in the TPPA status bar as "Settling" exactly like the adjustment systems TPPA drives on its own, and this plugin no longer blocks its own status line with a settle text the firmware telemetry overwrote
+- Changed — an axis whose direction is already confirmed is no longer cancelled as a wrong direction: an error that keeps growing on the reference side only warns while the correction goes on, and the session is stopped after three growing measurements in a row with a note that states what was measured; the wrong-direction verdict (auto change or cancel with the manual hint) is left to an axis that is still probing its direction
+- Fixed — an axis that was not commanded by the previous step (held inside the tolerance, or a verify-only measurement) is not judged on growth any more, so an error that moves with the sky, the mount or the tripod can no longer be reported as a wrong correction direction
+- Changed — the MSI bundle now ships the TPPA DLL rebuilt from the current TPPA sources (waits the settle time the controller asks for before capturing), so the settle behaviour is kept when the installer replaces both plugins
 
 ## 3.1.1.0 — 2026-09-27
 
-### Added — the controller announces its hardware readiness (firmware STATUS token) on `ControllerReady`, when the TPPA session opens and again whenever the axes go busy or ready, so TPPA can check the controller before the hand-over
-### Added — a firmware driver error or warning during a TPPA session publishes `Cancel` (after a ~1 s collection delay, so every code of the same incident travels in one human-readable note), instead of letting TPPA keep measuring on hardware that reported a problem
-### Added — SOFTWARE SETTING: "Automated adjustment settle time (s)" — after every correction move the bridge waits that long before it asks TPPA for the next measurement (the firmware reports the move as completed, but the axis still has to settle); 0 measures straight away
-### Added — the readiness report also carries `HardwareConnected`, so TPPA can tell "no link to the hardware" apart from "connected but the axes are busy"
-### Added — when TPPA reports that the three reference points are finished while the hardware link is down, the controller tries the selected transport first (serial scan or wireless connect) and the other transport once as a fallback, then reports readiness or a fault
-### Fixed — the hardware link is looked for once per session: a failed connect no longer restarts the COM-port scan every time TPPA heartbeats the "reference sweep finished" state
-### Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
-### Fixed — a soft-limit cancellation now carries the manual recovery steps in the note TPPA shows: press RETURN TO HOME, turn the tripod base by hand while PA keeps measuring, then assign MLAstro again
-### Fixed — STOP / FORCE STOP on the dock no longer cancels the TPPA session while TPPA is still measuring the three reference points (nothing is handed over yet, so the run is not ended; the broker log says the STOP was ignored) - from the hand-over until the session ends, cancelling works as before
-### Changed — a correction no longer touches an axis that is already inside the tolerance: that axis is commanded with a zero magnitude (its stored error stays untouched) while the axis still outside the tolerance keeps correcting, until TPPA finishes the run - a passing axis is not nudged away from the tolerance it has already reached
-### Changed — the correction is always sent as ONE dual-axis ALIGN command, with the held axis travelling as a zero magnitude instead of being left out of the command
-### Changed — the wrong-direction verdict compares every measurement against the SAME reference (the error the axis had when the three reference points were solved) instead of the measurement before it, so a single noisy sample can no longer flip or cancel a direction that is already improving
-### Changed — the wrong-direction verdict reads the SIGN of the error, not its magnitude: a move that crosses the target (the overshoot leg does it on purpose) comes back with the opposite sign and confirms the direction, while a move that runs the wrong way keeps the sign of the sweep error and grows on that side; the magnitude only says whether the axis improved
+- Added — the controller announces its hardware readiness (firmware STATUS token) on `ControllerReady`, when the TPPA session opens and again whenever the axes go busy or ready, so TPPA can check the controller before the hand-over
+- Added — a firmware driver error or warning during a TPPA session publishes `Cancel` (after a ~1 s collection delay, so every code of the same incident travels in one human-readable note), instead of letting TPPA keep measuring on hardware that reported a problem
+- Added — SOFTWARE SETTING: "Automated adjustment settle time (s)" — after every correction move the bridge waits that long before it asks TPPA for the next measurement (the firmware reports the move as completed, but the axis still has to settle); 0 measures straight away
+- Added — the readiness report also carries `HardwareConnected`, so TPPA can tell "no link to the hardware" apart from "connected but the axes are busy"
+- Added — when TPPA reports that the three reference points are finished while the hardware link is down, the controller tries the selected transport first (serial scan or wireless connect) and the other transport once as a fallback, then reports readiness or a fault
+- Fixed — the hardware link is looked for once per session: a failed connect no longer restarts the COM-port scan every time TPPA heartbeats the "reference sweep finished" state
+- Fixed — a TPPA session is no longer cancelled as "firmware link lost" when the link was never up: the abort now needs a real connected-to-lost transition, so a failed connect at session start reports its own fault instead of a bogus link loss
+- Fixed — a soft-limit cancellation now carries the manual recovery steps in the note TPPA shows: press RETURN TO HOME, turn the tripod base by hand while PA keeps measuring, then assign MLAstro again
+- Fixed — STOP / FORCE STOP on the dock no longer cancels the TPPA session while TPPA is still measuring the three reference points (nothing is handed over yet, so the run is not ended; the broker log says the STOP was ignored) - from the hand-over until the session ends, cancelling works as before
+- Changed — a correction no longer touches an axis that is already inside the tolerance: that axis is commanded with a zero magnitude (its stored error stays untouched) while the axis still outside the tolerance keeps correcting, until TPPA finishes the run - a passing axis is not nudged away from the tolerance it has already reached
+- Changed — the correction is always sent as ONE dual-axis ALIGN command, with the held axis travelling as a zero magnitude instead of being left out of the command
+- Changed — the wrong-direction verdict compares every measurement against the SAME reference (the error the axis had when the three reference points were solved) instead of the measurement before it, so a single noisy sample can no longer flip or cancel a direction that is already improving
+- Changed — the wrong-direction verdict reads the SIGN of the error, not its magnitude: a move that crosses the target (the overshoot leg does it on purpose) comes back with the opposite sign and confirms the direction, while a move that runs the wrong way keeps the sign of the sweep error and grows on that side; the magnitude only says whether the axis improved
 
 ## 3.1.0.0 — 2026-09-27
 
-### Added — CONNECTION tab: "Auto scan COM port" toggle - with it enabled the COM-port list is replaced by a Start button that probes every COM port for the controller (same `[MLAstroRPA-TC]` handshake as TPPA), selects the port that answered and connects to it (the button turns into Disconnect once the session is up); the Reset ESP32 button is shown only while connected
+- Added — CONNECTION tab: "Auto scan COM port" toggle - with it enabled the COM-port list is replaced by a Start button that probes every COM port for the controller (same `[MLAstroRPA-TC]` handshake as TPPA), selects the port that answered and connects to it (the button turns into Disconnect once the session is up); the Reset ESP32 button is shown only while connected
 
 ## 3.0.0.0 — 2026-09-26
 
-### Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel
-### Changed — bridge code renamed from TppaBroker/ExternalCorrection to the Bridge vocabulary (BridgeClient, BridgeContract, BridgePayloads, BridgeRunner, BridgeEngine); every wire string is unchanged
-### Changed — plugin identity fully separated from MLAstroRPA+TPPA (own PluginId, MSI UpgradeCode, namespaces and resource keys) so both plugins can stay installed side by side
-### Changed — options tabs renamed and reordered: CONTROL, HARDWARE SETTING, SOFTWARE SETTING, CONNECTION
-### Changed — SOFTWARE SETTING tab: TPPA/broker status moved above the expander, overshoot and reverse-direction toggles moved up next to the assign toggle
-### Changed — broker log shows direction (RPA → TPPA / TPPA → RPA) with a colour legend
-### Changed — English tooltips on the options page; overshoot values sit under their own direction and follow the master toggle
-### Removed — the confirmation count and the session time limit settings: TPPA owns the finish policy and its own session time limit
-### Removed — the Stop external session button on the options page (STOP / FORCE STOP on the dock and the broker switch already cancel a running session)
-### Fixed — a stop now stops the axes before the session is cancelled and only once, and the aborted move is no longer reported as a hardware fault
-### Fixed — a pause no longer lets a planned move start
-### Fixed — losing the firmware link (serial or wireless) cancels the TPPA session instead of leaving it waiting
-### Fixed — polled telemetry no longer overwrites the azimuth/altitude inputs while editing
-### Fixed — commands dropped because the link is not connected are now logged
+- Added — TPPA bridge: MLAstroRPA runs the polar alignment loop of the Three Point Polar Alignment plugin, taking the measurements, moving the axes, holding the capture windows and honouring pause, stop and cancel
+- Changed — bridge code renamed from TppaBroker/ExternalCorrection to the Bridge vocabulary (BridgeClient, BridgeContract, BridgePayloads, BridgeRunner, BridgeEngine); every wire string is unchanged
+- Changed — plugin identity fully separated from MLAstroRPA+TPPA (own PluginId, MSI UpgradeCode, namespaces and resource keys) so both plugins can stay installed side by side
+- Changed — options tabs renamed and reordered: CONTROL, HARDWARE SETTING, SOFTWARE SETTING, CONNECTION
+- Changed — SOFTWARE SETTING tab: TPPA/broker status moved above the expander, overshoot and reverse-direction toggles moved up next to the assign toggle
+- Changed — broker log shows direction (RPA → TPPA / TPPA → RPA) with a colour legend
+- Changed — English tooltips on the options page; overshoot values sit under their own direction and follow the master toggle
+- Removed — the confirmation count and the session time limit settings: TPPA owns the finish policy and its own session time limit
+- Removed — the Stop external session button on the options page (STOP / FORCE STOP on the dock and the broker switch already cancel a running session)
+- Fixed — a stop now stops the axes before the session is cancelled and only once, and the aborted move is no longer reported as a hardware fault
+- Fixed — a pause no longer lets a planned move start
+- Fixed — losing the firmware link (serial or wireless) cancels the TPPA session instead of leaving it waiting
+- Fixed — polled telemetry no longer overwrites the azimuth/altitude inputs while editing
+- Fixed — commands dropped because the link is not connected are now logged
 
 ## 2.2.1.0 — 2026-09-20
 
-### Fixed — AP/STA connection status indicators
-### Fixed — WebSocket link watchdog disconnect handling
+- Fixed — AP/STA connection status indicators
+- Fixed — WebSocket link watchdog disconnect handling
 
 ## 2.2.0.0
 
