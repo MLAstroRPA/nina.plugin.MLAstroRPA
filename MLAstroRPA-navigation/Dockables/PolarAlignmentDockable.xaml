@@ -516,41 +516,7 @@
             <Expander Header="🎯 Polar Alignment" IsExpanded="True" Margin="0,0,0,10"
                       Visibility="{Binding ControlsVisibility}">
                 <StackPanel Margin="10">
-                    <!-- Moved Position Display -->
-                    <Border Background="#2C3E50" CornerRadius="4" Padding="10" Margin="0,0,0,15">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <!-- Az Moved -->
-                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                <TextBlock Text="Az Moved" 
-                                           FontSize="11" 
-                                           Foreground="#BDC3C7" 
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding AzMovedPosition}" 
-                                           FontSize="16" 
-                                           FontWeight="Bold" 
-                                           Foreground="White"
-                                           HorizontalAlignment="Center"/>
-                            </StackPanel>
-
-                            <!-- Alt Moved -->
-                            <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                <TextBlock Text="Alt Moved" 
-                                           FontSize="11" 
-                                           Foreground="#BDC3C7" 
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding AltMovedPosition}" 
-                                           FontSize="16" 
-                                           FontWeight="Bold" 
-                                           Foreground="White"
-                                           HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                    <!-- (the moved positions now sit right after each Align button below) -->
 
                     <!-- Az Error Input -->
                     <Grid Margin="0,0,0,8">
@@ -558,6 +524,8 @@
                             <ColumnDefinition Width="150"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <!-- 5th column = the moved position of THIS axis, right after its Align button. -->
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
@@ -590,6 +558,10 @@
                             <TextBlock Text="Right" VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </StackPanel>
                         <Button Grid.Column="3" Grid.RowSpan="2" Content="Align Az" Width="100" VerticalAlignment="Center" Command="{Binding AlignAzCommand}" IsEnabled="{Binding CanAlign}"/>
+                        <StackPanel Grid.Column="4" Grid.RowSpan="2" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text=" Moved" FontSize="11" Foreground="#BDC3C7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding AzMovedPosition}" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Grid>
 
                     <Border Height="1" Background="#3A4654" Opacity="0.55" Margin="0,0,0,15"/>
@@ -600,6 +572,8 @@
                             <ColumnDefinition Width="150"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <!-- 5th column = the moved position of THIS axis, right after its Align button. -->
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Alt Error:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,15,0"/>
@@ -628,6 +602,10 @@
                             <TextBlock Text="Down" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                         </StackPanel>
                         <Button Grid.Column="3" Content="Align Alt" Width="100" VerticalAlignment="Center" Command="{Binding AlignAltCommand}" IsEnabled="{Binding CanAlign}"/>
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text=" Moved" FontSize="11" Foreground="#BDC3C7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding AltMovedPosition}" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Grid>
 
                     <!-- Align row: ALIGN ALL + SAVE / FALLBACK the aligned polar-alignment position (#27).

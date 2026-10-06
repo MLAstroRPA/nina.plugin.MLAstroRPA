@@ -67,12 +67,19 @@
                             <StackPanel Width="220" Margin="0,0,10,10"
                                         Visibility="{Binding IsAutoScanComPort, Converter={StaticResource MlaRpaBoolToVis}}">
                                 <TextBlock Text="Auto scan" Margin="0,0,0,5" />
-                                <Button Content="{Binding AutoScanButtonText}"
-                                        Width="110"
-                                        HorizontalAlignment="Left"
-                                        IsEnabled="{Binding IsExternalUnlocked}"
-                                        Command="{Binding StartAutoScanCommand}"
-                                        ToolTip="Scan every COM port for the controller and connect to the port that answers. While connected the button turns into Disconnect." />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="{Binding AutoScanButtonText}"
+                                            Width="110"
+                                            Margin="0,0,10,0"
+                                            IsEnabled="{Binding IsExternalUnlocked}"
+                                            Command="{Binding StartAutoScanCommand}"
+                                            ToolTip="Scan every COM port for the controller and connect to the port that answers. While connected the button turns into Disconnect." />
+                                    <!-- Reset ESP32 sits on the SAME row as the Start/Disconnect button, and only on a live session. -->
+                                    <Button Content="Reset ESP32"
+                                            Width="110"
+                                            Command="{Binding ResetEsp32Command}"
+                                            Visibility="{Binding IsSerialConnected, Converter={StaticResource MlaRpaBoolToVis}}" />
+                                </StackPanel>
                                 <TextBlock Text="{Binding AutoScanStatus}"
                                            Foreground="Gray"
                                            FontSize="11"
@@ -88,12 +95,14 @@
                                     Margin="0,0,10,0"
                                     Command="{Binding ToggleSerialConnectionCommand}"
                                     Visibility="{Binding IsManualComPortVisible, Converter={StaticResource MlaRpaBoolToVis}}" />
-                            <!-- Reset ESP32 only makes sense on a live session: shown once the connection is up. -->
-                            <Button Content="Reset ESP32"
-                                    Width="110"
-                                    Margin="0,0,10,0"
-                                    Command="{Binding ResetEsp32Command}"
-                                    Visibility="{Binding IsSerialConnected, Converter={StaticResource MlaRpaBoolToVis}}" />
+                            <!-- Reset ESP32 sits next to the connect/disconnect button (in auto-scan mode it moved up into the scan row). -->
+                            <StackPanel Visibility="{Binding IsManualComPortVisible, Converter={StaticResource MlaRpaBoolToVis}}">
+                                <Button Content="Reset ESP32"
+                                        Width="110"
+                                        Margin="0,0,10,0"
+                                        Command="{Binding ResetEsp32Command}"
+                                        Visibility="{Binding IsSerialConnected, Converter={StaticResource MlaRpaBoolToVis}}" />
+                            </StackPanel>
                             <TextBlock Text="{Binding AutoReconnectStatus}"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
@@ -178,7 +187,7 @@
 
                             <TextBlock Text="{Binding SerialConnectionStatus}"
                                        TextWrapping="Wrap"
-                                       Foreground="Gray"
+                                       Foreground="{Binding SerialConnectionStatus, Converter={StaticResource MlaRpaStatusBrush}}"
                                        FontSize="11"
                                        Margin="0,0,0,4" />
 
@@ -187,7 +196,7 @@
                                            Foreground="Gray"
                                            FontSize="11" />
                                 <TextBlock Text="{Binding SerialHandshakeStatus}"
-                                           Foreground="Gray"
+                                           Foreground="{Binding SerialHandshakeStatus, Converter={StaticResource MlaRpaStatusBrush}}"
                                            FontSize="11" />
                             </StackPanel>
 

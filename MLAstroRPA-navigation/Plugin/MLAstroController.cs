@@ -363,8 +363,11 @@ namespace MLAstroRPA.Plugin
             AutoScanStatus = $"Found the controller on {foundPort}. Connecting...";
 
             await _serialConnectionService.ConnectAsync(foundPort, SerialBaudRate);
+
+            // On success the connection line ("Connected: COMx @ baud ...") already reports it, so the scan text is
+            // cleared instead of printing a second "Connected on COMx." line under the button.
             AutoScanStatus = IsSerialConnected
-                ? $"Connected on {foundPort}."
+                ? string.Empty
                 : $"Device found on {foundPort}, but the connection failed.";
             RaiseConnectionProperties();
         }
