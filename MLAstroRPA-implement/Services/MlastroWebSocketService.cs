@@ -291,7 +291,11 @@ namespace MLAstroRPA.Services
             if (IsConnected) return true;
 
             // New session: clear the table of the previous session (like refreshing the Web UI page) so it only
-            // shows the events of this connection. The firmware does not replay old logs to the PC either.
+            // shows the events of this connection. The clear is the FIRST statement here - it runs BEFORE the
+            // socket is opened (and on the calling thread, so on the UI thread it is not even queued), therefore
+            // the recent-log history the firmware replays right after a client connects (wsSendRecentLogs, sent
+            // after WS_REPLAY_DELAY_MS) lands AFTERWARDS and stays visible: the panel ends up showing exactly the
+            // same lines as a freshly loaded Web UI page.
             ClearSystemLog();
 
             var host = ConfiguredAddress.Trim();
