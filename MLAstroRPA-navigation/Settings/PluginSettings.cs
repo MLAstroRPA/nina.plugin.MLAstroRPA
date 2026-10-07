@@ -513,7 +513,7 @@ namespace MLAstroRPA.Settings
         /// <summary>Upper limit for a single correction step (arcmin), so one large error cannot produce a dangerous slew.</summary>
         public double CorrectionMaxStepArcMin
         {
-            get => GetDouble(nameof(CorrectionMaxStepArcMin), 60);
+            get => GetDouble(nameof(CorrectionMaxStepArcMin), 120);
             set => SetDouble(value);
         }
 
@@ -531,7 +531,7 @@ namespace MLAstroRPA.Settings
         /// <summary>Overshoot: deliberately travel past the target so the next measurement corrects the remainder.</summary>
         public bool CorrectionOvershootEnabled
         {
-            get => GetBool(nameof(CorrectionOvershootEnabled), false);
+            get => GetBool(nameof(CorrectionOvershootEnabled), true);
             set => SetBool(value);
         }
 
@@ -543,7 +543,7 @@ namespace MLAstroRPA.Settings
 
         public double CorrectionOvershootDownArcMin
         {
-            get => GetDouble(nameof(CorrectionOvershootDownArcMin), 5);
+            get => GetDouble(nameof(CorrectionOvershootDownArcMin), 30);
             set => SetDouble(value);
         }
 
