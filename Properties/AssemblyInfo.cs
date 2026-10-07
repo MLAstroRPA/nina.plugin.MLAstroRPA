@@ -46,6 +46,8 @@ MLAstro RPA controller over USB serial or Wi-Fi, jogs the altitude and azimuth a
 set number of degrees, and shows live position, status and alarms. It also keeps the controller's own
 settings: motor drivers, soft limits, backlash and Wi-Fi.
 
+[*User manual*](https://github.com/MLAstroRPA/nina.plugin.MLAstroRPA/blob/main/User%20manual.md) - setup, every tab in detail and the polar alignment workflow with TPPA.
+
 The whole controller lives in four tabs: CONTROL for the jog pad, position readout and STOP / FORCE
 STOP, HARDWARE SETTING for the controller parameters, SOFTWARE SETTING for the correction options and
 the broker log, and CONNECTION for the serial port or wireless link, the handshake and the on-board

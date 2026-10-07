@@ -8,7 +8,7 @@ backlash, Wi-Fi).
 This manual explains the **polar alignment workflow with the Three Point Polar Alignment (TPPA) plugin**
 first, then every tab of the plugin options page.
 
-Related documents: [`FAQ.md`](FAQ.md) · [`Changelog.md`](Changelog.md) ·
+Related documents: [`Changelog.md`](Changelog.md) ·
 [`MLAstroRPA-navigation/Documentation/Serial-protocol.md`](MLAstroRPA-navigation/Documentation/Serial-protocol.md) ·
 TPPA external-correction contract (in the Three Point Polar Alignment repository).
 

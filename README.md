@@ -120,7 +120,8 @@ Two options are available: the **MSI installer** (recommended) or a **manual DLL
 - `MLAstroRPA-navigation/Documentation/Serial-protocol.md` — serial commands and telemetry
 - `MLAstroRPA-navigation/Documentation/Websocket-protocol.md` — wireless (WebSocket) protocol
 - `MLAstroRPA-navigation/Documentation/UI-TEXT-REFERENCE.md` — UI texts and where they are defined
-- `Changelog.md` — version history · `FAQ.md` — frequently asked questions
+- `User manual.md` — setup, every tab in detail and the polar alignment workflow with TPPA
+- `Changelog.md` — version history
 
 ## License
 
