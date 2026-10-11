@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 3.3.0.0 — 2026-10-11
+
+- Added — switching the broker off tells TPPA that the controller is leaving (`Cancel` with the reason `BrokerDisabled`) even when no alignment session is running: without it TPPA could only notice by the controller falling silent, so it kept the controller in its alignment system list until its presence window expired
+
 ## 3.2.0.0 — 2026-10-05
 
 - Added — NETWORK CONFIG gets an "mDNS Name" group box (the `.local` tail follows the typed name): the name is sent to the device on SAVE ALL & REBOOT over Serial (`MDns:`) and over the wireless link (`mdns_name`) and read back from the telemetry, so the plugin can rename the controller like the Web UI does

@@ -922,6 +922,13 @@ namespace MLAstroRPA.Plugin
                     AppendBrokerLog("Broker off: asking TPPA to cancel the session (BrokerDisabled).");
                     _bridgeRunner.AbortSessionAsync(BridgeReason.BrokerDisabled).GetAwaiter().GetResult();
                 }
+                else if (_bridgeRunner != null)
+                {
+                    // No session to cancel, but TPPA keeps this controller in its alignment system list: without a
+                    // goodbye it would only notice by the controller falling silent, after its presence window.
+                    AppendBrokerLog("Broker off: telling TPPA that the controller is leaving (BrokerDisabled).");
+                    _bridgeRunner.NotifyBrokerDisabledAsync().GetAwaiter().GetResult();
+                }
             }
             catch (Exception ex)
             {

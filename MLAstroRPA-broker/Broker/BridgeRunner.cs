@@ -181,6 +181,20 @@ namespace MLAstroRPA.Broker
             Logger.Info("[MLAstro][Broker] External correction runner stopped.");
         }
 
+        /// <summary>
+        /// Tells TPPA that the broker was switched off while no session is running. Without it TPPA can only notice
+        /// by the controller falling silent, so it keeps the controller in its alignment system list until its
+        /// presence window expires. Published on the normal command topic without a session id, because there is no
+        /// session to address.
+        /// </summary>
+        public async Task NotifyBrokerDisabledAsync()
+        {
+            await _client.PublishAsync(BridgeKind.Cancel,
+                                       null,
+                                       new ControllerCancelPayload { Reason = BridgeReason.BrokerDisabled })
+                         .ConfigureAwait(false);
+        }
+
         /// <summary>Aborts a running session on purpose (user pressed Stop, or the firmware reported an error).</summary>
         public async Task AbortSessionAsync(string reason, string note = null)
         {
