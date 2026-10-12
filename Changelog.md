@@ -2,6 +2,10 @@
 
 ## 3.3.0.0 — 2026-10-11
 
+- Fixed — the session id is adopted from every message TPPA sends, so a controller that missed the "session opened" state can no longer keep answering under the id of its previous session (which TPPA ignores, which made TPPA report the controller as not ready although it was ready)
+- Added — the connection ladder looks for the alignment hardware the way the operator selected it: wireless → the selected COM port → every COM port, or the selected COM port → every COM port → wireless when serial is selected. It is only run when TPPA asks for the axes (the "reference sweep finished" state, which it heartbeats while waiting, and every measurement), so nothing is scanned while TPPA is still measuring the reference points; a cable plugged in late or a restored wireless link is picked up on the next request
+- Fixed — a measurement that arrives while no session is running re-arms the session instead of being ignored, and a correction that TPPA asks for while the controller has no link to the hardware ends the run with a clear error instead of leaving TPPA waiting for an answer
+- Fixed — the readiness TPPA waits for before handing the correction over is reported again on every "reference sweep finished" state: the controller went silent once the hardware link had been looked for in a session, which left TPPA without an answer at the hand-over of every run after the first
 - Added — switching the broker off tells TPPA that the controller is leaving (`Cancel` with the reason `BrokerDisabled`) even when no alignment session is running: without it TPPA could only notice by the controller falling silent, so it kept the controller in its alignment system list until its presence window expired
 
 ## 3.2.0.0 — 2026-10-05

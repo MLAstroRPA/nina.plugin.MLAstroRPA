@@ -41,6 +41,16 @@ namespace MLAstroRPA.Broker
         private const int MaxConfirmedGrowthMeasurements = 3;
 
         /// <summary>
+        /// TEST-ONLY: the wrong-direction guard is switched off while the run is tested against the simulator, whose
+        /// errors do not follow the real axis behaviour. With it off, a growing error is not judged at all: no
+        /// automatic direction flip, no "not converging" warning and no session abort - the axes keep being
+        /// corrected from the measured error alone. Set it back to true (or delete this flag and the two early
+        /// returns that read it: <see cref="TrackAxisError"/> and <see cref="HandleAxisGrowthAsync"/>) to re-enable
+        /// the guard.
+        /// </summary>
+        private const bool DirectionGuardEnabled = false;
+
+        /// <summary>
         /// Consecutive solves inside the tolerance that TPPA has to report before this controller asks it
         /// to finish. TPPA counts them itself; this is only the fallback for a build that publishes the
         /// counter without the ready flag.
@@ -81,11 +91,17 @@ namespace MLAstroRPA.Broker
         private bool _stopping;
 
         /// <summary>
-        /// True once the hardware link was looked for in this session. TPPA heartbeats the
-        /// "reference sweep finished" state while the hand-over prompt is open, so without this a failed
-        /// connect would restart the whole COM-port scan again and again.
+        /// Minimum time between two connection ladders. TPPA heartbeats the "reference sweep finished" state
+        /// every two seconds while it waits for the hardware, and one ladder opens every COM port, so the retries
+        /// are spaced out instead of running on every heartbeat.
         /// </summary>
-        private bool _hardwareConnectAttempted;
+        private const int HardwareConnectRetryIntervalMs = 10000;
+
+        /// <summary>Ticks of the last connection ladder, so two of them are never closer than the interval.</summary>
+        private long _lastHardwareConnectTicks;
+
+        /// <summary>1 while a connection ladder runs, so two of them never open the same port at once.</summary>
+        private int _hardwareConnectBusy;
 
         /// <summary>1 once TPPA finished the three reference points and hands the correction over.</summary>
         private int _handoverStarted;
@@ -373,6 +389,14 @@ namespace MLAstroRPA.Broker
             // watchdog quiet for another interval.
             Volatile.Write(ref _lastInboundTicks, DateTime.UtcNow.Ticks);
 
+            // TPPA addresses the session it runs and drops every answer that carries a different id. A session state
+            // that was missed must not leave the controller answering under the id of its previous session, so the id
+            // is adopted from any message that carries one.
+            if (!string.IsNullOrEmpty(envelope.SessionId))
+            {
+                lock (_gate) { _sessionId = envelope.SessionId; }
+            }
+
             switch (envelope.Kind)
             {
                 case BridgeKind.AdjustmentGranted:
@@ -610,31 +634,19 @@ namespace MLAstroRPA.Broker
             if (string.Equals(state.State, BridgeState.WaitingForRequest, StringComparison.Ordinal)
                 && string.Equals(state.Reason, BridgeReason.MeasurementsFinished, StringComparison.Ordinal))
             {
-                // The three reference points are measured: only now are the axes needed. A controller that
-                // is still offline brings its hardware up here (selected transport, then the other one
-                // once) and reports the result - that report is what TPPA checks before the hand-over.
-                if (_hardwareConnectAttempted)
-                {
-                    // Already looked for the controller in this session: a repeated sweep-finished
-                    // heartbeat must not start another scan (the failure was already reported).
-                    return;
-                }
-
-                _hardwareConnectAttempted = true;
+                // The three reference points are measured: only now are the axes needed. A controller that is
+                // still offline brings its hardware up here and reports the result - that report is what TPPA
+                // checks before the correction. A failed attempt is not final: TPPA heartbeats this state while
+                // it waits, so the ladder is picked up again on the next heartbeat and the hardware can still be
+                // plugged in or switched to the other link without the operator touching anything.
+                // This state and an incoming measurement are the ONLY two moments the plugin looks for the
+                // hardware: nothing is scanned or opened while TPPA is still measuring the reference points.
                 Logger.Info($"[MLAstro][Broker] TPPA finished the reference sweep. Hardware connected: {_aligner.IsConnected}.");
                 SetStatus("Connecting the hardware...");
 
-                if (!await TryConnectHardwareAsync().ConfigureAwait(false))
+                if (!await EnsureHardwareConnectedAsync().ConfigureAwait(false))
                 {
-                    SetStatus("Hardware not connected");
-                    await _client.PublishAsync(BridgeKind.Fault,
-                                               SessionId,
-                                               new ControllerFaultPayload
-                                               {
-                                                   Reason = BridgeReason.ControllerFault,
-                                                   Detail = $"No link to the MLAstro controller over {_settings.TransportMode} or over the fallback transport.",
-                                                   HardwareStopStatus = BridgeHardwareStopStatus.Unknown
-                                               }).ConfigureAwait(false);
+                    SetStatus("Hardware not connected - still looking for the controller");
                     return;
                 }
 
@@ -689,28 +701,106 @@ namespace MLAstroRPA.Broker
         }
 
         /// <summary>
-        /// Brings the hardware link up when TPPA asks for a session: the selected transport is tried first
-        /// (serial scan, or wireless connect) and the other one is tried ONCE as a fallback, so a stale
-        /// connection choice does not end the run. Returns false when neither transport comes up.
+        /// Makes sure the alignment hardware is reachable, the way the operator asked: the connection selected in
+        /// the settings is tried first, then the other way of looking for the controller, then the last option.
+        /// The ladder is rate limited and never runs twice at the same time, so TPPA heartbeats cannot turn into a
+        /// permanent COM-port scan. Returns true when the controller can be driven.
         /// </summary>
+        private async Task<bool> EnsureHardwareConnectedAsync(bool force = false)
+        {
+            if (_aligner.IsConnected) { return true; }
+            if (Interlocked.CompareExchange(ref _hardwareConnectBusy, 1, 0) != 0) { return false; }
+
+            try
+            {
+                var now = DateTime.UtcNow.Ticks;
+                var last = Volatile.Read(ref _lastHardwareConnectTicks);
+                if (!force && last != 0 && TimeSpan.FromTicks(now - last).TotalMilliseconds < HardwareConnectRetryIntervalMs)
+                {
+                    return false;
+                }
+
+                Volatile.Write(ref _lastHardwareConnectTicks, now);
+                return await TryConnectHardwareAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                Volatile.Write(ref _hardwareConnectBusy, 0);
+            }
+        }
+
+        /// <summary>One rung of the connection ladder.</summary>
+        private readonly struct ConnectAttempt
+        {
+            public ConnectAttempt(MlastroTransportMode transport, bool selectedPortOnly)
+            {
+                Transport = transport;
+                SelectedPortOnly = selectedPortOnly;
+            }
+
+            public MlastroTransportMode Transport { get; }
+
+            /// <summary>Serial only: try the port the operator selected and nothing else.</summary>
+            public bool SelectedPortOnly { get; }
+        }
+
+        /// <summary>
+        /// The ladder the operator asked for: the selected connection first, then the other one, then the last
+        /// option, so a controller used over the cable today and over the wireless link tomorrow is found without
+        /// changing the settings.
+        /// Wireless selected: wireless - the selected COM port - every COM port.
+        /// Serial selected: the selected COM port - every COM port - wireless.
+        /// </summary>
+        private IReadOnlyList<ConnectAttempt> BuildConnectAttempts()
+        {
+            if (_settings.TransportMode == MlastroTransportMode.Wireless)
+            {
+                return new[]
+                {
+                    new ConnectAttempt(MlastroTransportMode.Wireless, false),
+                    new ConnectAttempt(MlastroTransportMode.Serial, true),
+                    new ConnectAttempt(MlastroTransportMode.Serial, false)
+                };
+            }
+
+            return new[]
+            {
+                new ConnectAttempt(MlastroTransportMode.Serial, true),
+                new ConnectAttempt(MlastroTransportMode.Serial, false),
+                new ConnectAttempt(MlastroTransportMode.Wireless, false)
+            };
+        }
+
+        /// <summary>Runs the whole ladder, one rung after the other, until a link answers.</summary>
         private async Task<bool> TryConnectHardwareAsync()
         {
             if (_aligner.IsConnected) { return true; }
 
-            var selected = _settings.TransportMode;
-            SetStatus($"Connecting over {selected}...");
-            if (await TryConnectTransportAsync(selected).ConfigureAwait(false)) { return true; }
+            var attempts = BuildConnectAttempts();
+            for (var i = 0; i < attempts.Count; i++)
+            {
+                var attempt = attempts[i];
+                var name = attempt.Transport == MlastroTransportMode.Wireless
+                    ? "the wireless link"
+                    : attempt.SelectedPortOnly
+                        ? $"the selected COM port ({_settings.ComPort ?? "none"})"
+                        : "every COM port";
 
-            var fallback = selected == MlastroTransportMode.Wireless
-                ? MlastroTransportMode.Serial
-                : MlastroTransportMode.Wireless;
+                SetStatus($"Connecting {i + 1}/{attempts.Count}: {name}...");
+                Logger.Info($"[MLAstro][Broker] Connection attempt {i + 1}/{attempts.Count}: {name}.");
 
-            Logger.Warning($"[MLAstro][Broker] No link over {selected}. Trying {fallback} once.");
-            SetStatus($"No link over {selected} - trying {fallback} once...");
-            return await TryConnectTransportAsync(fallback).ConfigureAwait(false);
+                if (await TryConnectTransportAsync(attempt.Transport, attempt.SelectedPortOnly).ConfigureAwait(false))
+                {
+                    return true;
+                }
+            }
+
+            Logger.Warning("[MLAstro][Broker] No link to the controller after the whole connection ladder.");
+            SetStatus("Hardware not connected");
+            return false;
         }
 
-        private async Task<bool> TryConnectTransportAsync(MlastroTransportMode transport)
+        private async Task<bool> TryConnectTransportAsync(MlastroTransportMode transport, bool selectedPortOnly)
         {
             // Ports are opened and closed on purpose while looking for the controller: a running TPPA session
             // must not read those link changes as "the firmware link was lost".
@@ -743,19 +833,29 @@ namespace MLAstroRPA.Broker
 
                 // Serial: every candidate port is opened and greeted exactly once - the connect itself sends
                 // the handshake, so the port that answers is the controller. No separate scan probe, which
-                // would greet the device a second time. Stored port first, then what the OS lists.
+                // would greet the device a second time. The selected port is one rung of the ladder and the
+                // other ports the next one.
                 var candidates = new List<string>();
                 if (!string.IsNullOrWhiteSpace(_settings.ComPort))
                 {
                     candidates.Add(_settings.ComPort);
                 }
 
-                foreach (var enumerated in _aligner.AvailablePorts)
+                if (!selectedPortOnly)
                 {
-                    if (!candidates.Contains(enumerated, StringComparer.OrdinalIgnoreCase))
+                    foreach (var enumerated in _aligner.AvailablePorts)
                     {
-                        candidates.Add(enumerated);
+                        if (!candidates.Contains(enumerated, StringComparer.OrdinalIgnoreCase))
+                        {
+                            candidates.Add(enumerated);
+                        }
                     }
+                }
+
+                if (candidates.Count == 0)
+                {
+                    Logger.Warning("[MLAstro][Broker] No COM port to try: none is selected and the system lists none.");
+                    return false;
                 }
 
                 foreach (var candidate in candidates)
@@ -879,17 +979,51 @@ namespace MLAstroRPA.Broker
             var measurement = envelope.PayloadAs<BridgeMeasurement>();
             if (measurement == null) { return; }
 
+            // TPPA is measuring, so its session is alive even when this side never saw the state message (or
+            // abandoned the session after a silence): dropping the measurement would leave TPPA waiting for an
+            // answer that never comes, so the session is re-armed instead.
+            bool rearm;
+            lock (_gate) { rearm = _sessionCts == null; }
+
+            if (!string.IsNullOrEmpty(measurement.SessionId))
+            {
+                lock (_gate) { _sessionId = measurement.SessionId; }
+            }
+
+            if (rearm)
+            {
+                Logger.Warning("[MLAstro][Broker] Received a measurement without a running session. Re-arming the session.");
+                ResetSessionState();
+                OnSessionStarted();
+            }
+
             CancellationToken token;
             lock (_gate)
             {
                 if (_sessionCts == null)
                 {
-                    Logger.Warning("[MLAstro][Broker] Received a measurement without an active session. Ignoring it.");
+                    Logger.Warning("[MLAstro][Broker] The session could not be started, so the measurement is ignored.");
                     return;
                 }
-                _sessionId = measurement.SessionId ?? _sessionId;
                 _lastMeasurement = measurement;
                 token = _sessionCts.Token;
+            }
+
+            // The measurement is TPPA's question, so this is the moment the axes have to be there: the whole
+            // connection ladder is run here, because a controller that reached its hardware only after the sweep
+            // (or that missed the sweep-finished state) must still answer instead of leaving the run hanging.
+            if (!await EnsureHardwareConnectedAsync(force: true).ConfigureAwait(false))
+            {
+                Logger.Warning("[MLAstro][Broker] No link to the alignment hardware: TPPA is told this controller cannot correct.");
+                await _client.PublishAsync(BridgeKind.Fault,
+                                           SessionId,
+                                           new ControllerFaultPayload
+                                           {
+                                               Reason = BridgeReason.FirmwareDisconnected,
+                                               Detail = "No link to the MLAstro controller: TPPA asked for a correction the hardware cannot perform.",
+                                               HardwareStopStatus = BridgeHardwareStopStatus.Unknown
+                                           }).ConfigureAwait(false);
+                return;
             }
 
             Logger.Info($"[MLAstro][Broker] Measurement #{measurement.SampleIndex}: az {measurement.AzimuthErrorArcMin:0.##}' " +
@@ -1250,7 +1384,6 @@ namespace MLAstroRPA.Broker
                 _paused = false;
                 _resumeNeedsMeasurement = false;
                 _stopping = false;
-                _hardwareConnectAttempted = false;
                 // A new session is not handed over yet: a manual STOP stays ignored until the reference sweep ends.
                 Volatile.Write(ref _handoverStarted, 0);
                 // The direction detection starts from scratch in every session.
@@ -1364,6 +1497,15 @@ namespace MLAstroRPA.Broker
                 return null;
             }
 
+            if (!DirectionGuardEnabled)
+            {
+                // TEST-ONLY: head of the wrong-direction guard (see DirectionGuardEnabled). The sign of the error is
+                // not judged, so no axis is confirmed, no growth is reported and the correction is planned from the
+                // measured error alone.
+                _axisIncreaseStreak[index] = 0;
+                return null;
+            }
+
             if (Math.Abs(errorArcMin) <= toleranceArcMin)
             {
                 // Inside the tolerance the sign is meaningless (solve noise may sit on either side of the target).
@@ -1424,6 +1566,14 @@ namespace MLAstroRPA.Broker
         /// </summary>
         private async Task<bool> HandleAxisGrowthAsync(string axisName, int index)
         {
+            if (!DirectionGuardEnabled)
+            {
+                // TEST-ONLY: head of the wrong-direction guard - a growing error must not end the session while the
+                // simulator is being used. The reference side is forgotten so a later re-enable starts clean.
+                _axisIncreaseStreak[index] = 0;
+                return false;
+            }
+
             if (_axisDirectionConfirmed[index])
             {
                 var referenceArcMin = _axisReferenceErrorArcMin[index];
