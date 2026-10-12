@@ -2,6 +2,8 @@
 
 ## 3.3.0.0 — 2026-10-11
 
+- Changed — the resume no longer asks for a measurement of its own: TPPA publishes the next one as soon as it is out of the pause, so the request only drew "no measurement is pending" on every resume; the answer a pause owes is sent while the pause happens
+- Fixed — a pause answers the measurement it interrupted (a fresh measurement is requested with the pause as the reason) after the axes were stopped, so TPPA is not left waiting for a move that will never happen
 - Fixed — the session id is adopted from every message TPPA sends, so a controller that missed the "session opened" state can no longer keep answering under the id of its previous session (which TPPA ignores, which made TPPA report the controller as not ready although it was ready)
 - Added — the connection ladder looks for the alignment hardware the way the operator selected it: wireless → the selected COM port → every COM port, or the selected COM port → every COM port → wireless when serial is selected. It is only run when TPPA asks for the axes (the "reference sweep finished" state, which it heartbeats while waiting, and every measurement), so nothing is scanned while TPPA is still measuring the reference points; a cable plugged in late or a restored wireless link is picked up on the next request
 - Fixed — a measurement that arrives while no session is running re-arms the session instead of being ignored, and a correction that TPPA asks for while the controller has no link to the hardware ends the run with a clear error instead of leaving TPPA waiting for an answer

@@ -522,13 +522,18 @@ namespace MLAstroRPA.Broker
                     var stopped = await _aligner.StopMoveAsync().ConfigureAwait(false);
                     var windowDropped = CancelPendingWindowRequest();
 
-                    if (stopped || windowDropped)
+                    bool answerPending;
+                    lock (_gate)
                     {
-                        // Whatever we interrupted is gone: TPPA expects a fresh request after the resume.
-                        lock (_gate)
-                        {
-                            _resumeNeedsMeasurement = true;
-                        }
+                        // A measurement that was handed over and is not answered yet: TPPA waits for that answer and
+                        // holds it until the resume, so the pause answers it here instead.
+                        answerPending = _resumeNeedsMeasurement || stopped || windowDropped;
+                        if (answerPending) { _resumeNeedsMeasurement = true; }
+                    }
+
+                    if (answerPending)
+                    {
+                        await PublishPausedAnswerAsync(reason).ConfigureAwait(false);
 
                         Logger.Info($"[MLAstro][Broker] Pause handled: stopped={stopped}, dropped pending window={windowDropped}.");
                     }
@@ -542,27 +547,44 @@ namespace MLAstroRPA.Broker
 
             Logger.Info("[MLAstro][Broker] TPPA resumed the run.");
 
-            bool needsMeasurement;
-            string sessionId;
             lock (_gate)
             {
-                needsMeasurement = _resumeNeedsMeasurement;
+                // Nothing is requested here any more: TPPA publishes its next measurement as soon as it is out of the
+                // pause, so a request of our own only drew "no measurement is pending" on every single resume. The
+                // answer a pause owes is sent while the pause happens, which is when TPPA is still holding that wait.
                 _resumeNeedsMeasurement = false;
-                sessionId = _sessionId;
             }
 
             SetStatus("Waiting for the next measurement");
+        }
 
-            if (!needsMeasurement || sessionId == null || !IsSessionRunning) { return; }
+        /// <summary>
+        /// Answers the measurement the pause interrupted, so TPPA is not left waiting for a move that is never going to
+        /// happen. TPPA knows what a pause is, so this only has to say "measure again"; the resume asks for the next
+        /// measurement the same way.
+        /// </summary>
+        private async Task PublishPausedAnswerAsync(string reason)
+        {
+            string sessionId;
+            lock (_gate) { sessionId = _sessionId; }
 
-            await _client.PublishAsync(BridgeKind.RequestMeasurement,
-                                       sessionId,
-                                       new BridgeMeasurementRequest
-                                       {
-                                           WindowId = null,
-                                           StationaryAndSettled = true,
-                                           Reason = BridgeReason.Resumed
-                                       }).ConfigureAwait(false);
+            if (sessionId == null || !IsSessionRunning) { return; }
+
+            try
+            {
+                await _client.PublishAsync(BridgeKind.RequestMeasurement,
+                                           sessionId,
+                                           new BridgeMeasurementRequest
+                                           {
+                                               WindowId = null,
+                                               StationaryAndSettled = true,
+                                               Reason = string.IsNullOrWhiteSpace(reason) ? BridgeReason.Paused : reason
+                                           }).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[MLAstro][Broker] Could not answer the measurement that the pause interrupted: {ex.Message}");
+            }
         }
 
         // ===== worker =====
