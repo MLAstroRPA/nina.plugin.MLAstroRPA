@@ -38,10 +38,34 @@ namespace MLAstroRPA.Broker
         public string[] AvailablePorts => _serial.AvailablePorts;
 
         /// <summary>
-        /// True when the axes are idle so TPPA may take over: the link is up and the firmware reports READY.
-        /// An unknown status counts as ready so a missing poll never blocks a run.
+        /// How long the firmware has to report the axes idle before the controller calls them ready. A STOP makes the
+        /// firmware report READY at once while the mechanics still coast, so the ready state is one short settle
+        /// behind the status line instead of being taken from it directly.
         /// </summary>
-        public bool IsHardwareReady => _serial.IsDeviceIdle;
+        private static readonly TimeSpan ReadyDebounce = TimeSpan.FromMilliseconds(500);
+
+        /// <summary>When the firmware started reporting the axes idle (null while they are not idle).</summary>
+        private DateTime? idleSinceUtc;
+
+        /// <summary>
+        /// True when the axes are idle so TPPA may take over: the link is up and the firmware has been reporting READY
+        /// for the whole debounce. An unknown status counts as ready so a missing poll never blocks a run, but that
+        /// idle still has to hold for the debounce first.
+        /// </summary>
+        public bool IsHardwareReady {
+            get {
+                if (!_serial.IsConnected || !_serial.IsDeviceIdle) { return false; }
+
+                var since = idleSinceUtc;
+                return since.HasValue && DateTime.UtcNow - since.Value >= ReadyDebounce;
+            }
+        }
+
+        /// <summary>
+        /// True when the firmware itself reports the axes as idle, without the ready debounce: a device that was just
+        /// connected is idle by this measure, although <see cref="IsHardwareReady"/> still waits for the debounce.
+        /// </summary>
+        public bool ReportsAxesIdle => _serial.IsConnected && _serial.IsDeviceIdle;
 
         /// <summary>Firmware STATUS token of the last telemetry ("READY", "MOVING", …), empty while unknown.</summary>
         public string DeviceStatus => _serial.DeviceStatus;
@@ -105,6 +129,17 @@ namespace MLAstroRPA.Broker
 
         private void OnTelemetryDataReceived(object sender, TelemetryDataEventArgs e)
         {
+            // The axes count as idle from the first line that reports them idle, and stop counting the moment one
+            // reports them busy, so IsHardwareReady can require the idle state to have held for the debounce.
+            if (!_serial.IsConnected || !_serial.IsDeviceIdle)
+            {
+                idleSinceUtc = null;
+            }
+            else if (!idleSinceUtc.HasValue)
+            {
+                idleSinceUtc = DateTime.UtcNow;
+            }
+
             var ready = IsHardwareReady;
             if (ready == lastReadiness)
             {
@@ -113,6 +148,22 @@ namespace MLAstroRPA.Broker
 
             lastReadiness = ready;
             ReadinessChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Waits until the axes are idle and stayed idle for the debounce - what a pause waits for before the run may
+        /// measure and move again. Returns false when that did not happen within the timeout.
+        /// </summary>
+        public async Task<bool> WaitUntilIdleAsync(TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (IsHardwareReady) { return true; }
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+
+            return IsHardwareReady;
         }
 
         /// <summary>

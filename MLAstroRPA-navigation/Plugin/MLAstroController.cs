@@ -852,6 +852,8 @@ namespace MLAstroRPA.Plugin
             // While a TPPA session owns the axes only the external controller may turn the motors: the manual
             // and automatic dock controls are locked.
             _bridgeRunner.SessionActiveChanged += (_, active) => SetDockAutomatedAdjustment(active);
+            // A travel that is still running when the alignment run starts is only stopped after the operator said so.
+            _bridgeRunner.HardwareBusyConfirmationRequested += OnHardwareBusyConfirmationRequested;
             // STOP / FORCE STOP on the dock also has to end the TPPA session: TPPA must not keep waiting for
             // a controller that just stopped the axes by hand.
             if (_polarAlignmentDockVM != null)
@@ -909,6 +911,54 @@ namespace MLAstroRPA.Plugin
             {
                 Logger.Error(ex);
             }
+        }
+
+        /// <summary>
+        /// Asks the operator whether the alignment run may stop the travel that is still running. The dialog runs on
+        /// the UI thread and blocks the bridge worker until it is answered; without a confirmation the session ends
+        /// before TPPA starts waiting for the hardware to become ready.
+        /// </summary>
+        private void OnHardwareBusyConfirmationRequested(object? sender, HardwareBusyConfirmationRequest request)
+        {
+            var confirmed = false;
+
+            try
+            {
+                var dispatcher = Application.Current?.Dispatcher;
+                void ask()
+                {
+                    var answer = MessageBox.Show(
+                        "Auto polar alignment is starting and the MLAstro axes are still turning " +
+                        $"(STATUS: {request.HardwareStatus})." + Environment.NewLine + Environment.NewLine +
+                        "Stop the running travel now, so the reference frames are captured with the axes standing still?" + Environment.NewLine +
+                        Environment.NewLine +
+                        "OK = stop the axes and hand them over to the alignment run." + Environment.NewLine +
+                        "Cancel = leave the axes as they are and end the alignment run.",
+                        "MLAstroRPA - auto polar alignment starting",
+                        MessageBoxButton.OKCancel,
+                        MessageBoxImage.Warning);
+
+                    confirmed = answer == MessageBoxResult.OK;
+                }
+
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.Invoke(new Action(ask));
+                }
+                else
+                {
+                    ask();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+            }
+
+            request.Confirmed = confirmed;
+            AppendBrokerLog(confirmed
+                ? "Auto PA starting: the operator confirmed the STOP of the running travel."
+                : "Auto PA starting: the operator declined the STOP, so the session is ended.");
         }
 
         private void StopBridge()

@@ -2,6 +2,11 @@
 
 ## 3.3.0.0 — 2026-10-11
 
+- Fixed — taking the axes over at the start of a run only asks the operator for a STOP when the firmware really reports a moving axis (a device that was just connected only has to hold its idle state for the ready debounce), and readiness stays "not ready" until the take-over is finished, so TPPA can no longer start the reference frames on a controller that is still bringing its axes up
+
+- Added — the hardware link is opened when the alignment session starts instead of after the reference sweep, and a travel that is still running is stopped only after the operator confirmed it in a dialog; a refused confirmation ends the session with NoControllerReady instead of leaving TPPA waiting for hardware that is not ready
+- Fixed — a pause waits for the axes to really stand still after the STOP (the firmware reports READY while the mechanics still coast), and the interrupted step forgets which axis it had commanded, so the next move is planned from the new measurement alone and the aborted travel is not travelled twice
+- Changed — readiness is reported only after the firmware has been reporting the axes idle for 500 ms, and the settle of the SOFTWARE SETTING travels with the answer of a pause so TPPA can apply it to the first capture after the resume
 - Changed — the resume no longer asks for a measurement of its own: TPPA publishes the next one as soon as it is out of the pause, so the request only drew "no measurement is pending" on every resume; the answer a pause owes is sent while the pause happens
 - Fixed — a pause answers the measurement it interrupted (a fresh measurement is requested with the pause as the reason) after the axes were stopped, so TPPA is not left waiting for a move that will never happen
 - Fixed — the session id is adopted from every message TPPA sends, so a controller that missed the "session opened" state can no longer keep answering under the id of its previous session (which TPPA ignores, which made TPPA report the controller as not ready although it was ready)

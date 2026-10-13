@@ -18,10 +18,34 @@ namespace MLAstroRPA.Broker
     /// session because of the measured error alone - TPPA owns the session lifecycle and only asks for
     /// a move or reports state.
     /// </summary>
+    public sealed class HardwareBusyConfirmationRequest : EventArgs
+    {
+        public HardwareBusyConfirmationRequest(string hardwareStatus, string linkPath)
+        {
+            HardwareStatus = hardwareStatus;
+            LinkPath = linkPath;
+        }
+
+        /// <summary>Firmware STATUS token of the axis state that is not idle.</summary>
+        public string HardwareStatus { get; }
+
+        /// <summary>Link the axes are reached over, for the dialog text.</summary>
+        public string LinkPath { get; }
+
+        /// <summary>Set by the UI side when the operator confirmed that the travel may be stopped.</summary>
+        public bool Confirmed { get; set; }
+    }
+
     public sealed class BridgeRunner : IDisposable
     {
         /// <summary>How long we wait for TPPA to grant a capture window after asking for it.</summary>
         private const int WindowGrantTimeoutMs = 15000;
+
+        /// <summary>
+        /// How long a pause waits for the axes to really stand still after it sent the STOP, because the firmware
+        /// reports READY while the mechanics still coast. A longer wait is no help - the pause has to end either way.
+        /// </summary>
+        private static readonly TimeSpan PauseSettleTimeout = TimeSpan.FromSeconds(5);
 
         /// <summary>Number of unusable (unstable / failed) measurements before the session is cancelled.</summary>
         private const int MaxUnusableMeasurements = 5;
@@ -521,6 +545,16 @@ namespace MLAstroRPA.Broker
                     // already planned never starts after the pause.
                     var stopped = await _aligner.StopMoveAsync().ConfigureAwait(false);
                     var windowDropped = CancelPendingWindowRequest();
+                    var axesIdle = true;
+
+                    if (stopped)
+                    {
+                        // The STOP is not the end of the travel: the firmware reports READY at once while the axes still
+                        // coast. The pause waits until that idle really held, and the interrupted step forgets what it
+                        // was doing, so the next move is planned from the new measurement alone.
+                        ResetDirectionTrackingAfterInterruption();
+                        axesIdle = await _aligner.WaitUntilIdleAsync(PauseSettleTimeout).ConfigureAwait(false);
+                    }
 
                     bool answerPending;
                     lock (_gate)
@@ -531,11 +565,11 @@ namespace MLAstroRPA.Broker
                         if (answerPending) { _resumeNeedsMeasurement = true; }
                     }
 
+                    Logger.Info($"[MLAstro][Broker] Pause handled: stopped={stopped}, axes idle={axesIdle}, dropped pending window={windowDropped}.");
+
                     if (answerPending)
                     {
                         await PublishPausedAnswerAsync(reason).ConfigureAwait(false);
-
-                        Logger.Info($"[MLAstro][Broker] Pause handled: stopped={stopped}, dropped pending window={windowDropped}.");
                     }
                 }
                 catch (Exception ex)
@@ -578,6 +612,12 @@ namespace MLAstroRPA.Broker
                                            {
                                                WindowId = null,
                                                StationaryAndSettled = true,
+                                               // The settle of the SOFTWARE SETTING belongs to the capture that follows the
+                                               // resume: the axes were stopped for the pause, so their mechanics need that
+                                               // moment then, not while the run is still standing still.
+                                               SettleSeconds = _settings.AutomatedAdjustmentSettleTime > 0
+                                                   ? _settings.AutomatedAdjustmentSettleTime
+                                                   : (double?)null,
                                                Reason = string.IsNullOrWhiteSpace(reason) ? BridgeReason.Paused : reason
                                            }).ConfigureAwait(false);
             }
@@ -920,13 +960,17 @@ namespace MLAstroRPA.Broker
         /// </summary>
         private async Task PublishReadinessAsync(string sessionId, string activeSessionId)
         {
-            var ready = _aligner.IsHardwareReady;
+            // While the session is still taking the axes over, the hardware is reported as not ready even when the
+            // firmware already says READY: TPPA must not start on a controller that has not finished the take-over.
+            var ready = !_sessionPreparing && _aligner.IsHardwareReady;
             var status = _aligner.DeviceStatus;
             var note = ready
                 ? null
-                : _aligner.IsConnected
-                    ? $"hardware busy (STATUS: {status})"
-                    : "no hardware link";
+                : _sessionPreparing
+                    ? "the controller is bringing its hardware up"
+                    : _aligner.IsConnected
+                        ? $"hardware busy (STATUS: {status})"
+                        : "no hardware link";
 
             await _client.PublishAsync(BridgeKind.ControllerReady,
                                        string.IsNullOrWhiteSpace(sessionId) ? activeSessionId : sessionId,
@@ -980,8 +1024,122 @@ namespace MLAstroRPA.Broker
             _watchdogTimer.Start();
 
             Logger.Info($"[MLAstro][Broker] Session {SessionId} started. Watching for TPPA silence.");
-            _ = cts;
             NotifySessionActive(true);
+
+            // The hardware is brought up as soon as the session exists instead of when TPPA asks for the
+            // correction: TPPA checks that the axes stand still before it captures the three reference frames,
+            // and a controller that only connects afterwards can never answer that check.
+            _ = Task.Run(() => PrepareHardwareForSessionAsync(cts.Token));
+        }
+
+        /// <summary>
+        /// Asks the operator whether a travel that is still running may be stopped for the alignment run. The dialog
+        /// lives on the UI side; a controller without one simply takes the axes.
+        /// </summary>
+        public event EventHandler<HardwareBusyConfirmationRequest> HardwareBusyConfirmationRequested;
+
+        /// <summary>
+        /// True while the session is taking the hardware over: readiness is reported as "not ready" until this is done,
+        /// so TPPA cannot take the controller as ready while its axes are still being brought up.
+        /// </summary>
+        private volatile bool _sessionPreparing;
+
+        /// <summary>
+        /// Opens the link and gets the axes standing still before TPPA captures the reference frames, so the run can
+        /// report the readiness TPPA waits for. A travel that is still running is only stopped after the operator
+        /// confirmed it, because that travel may be one they started themselves.
+        /// </summary>
+        private async Task PrepareHardwareForSessionAsync(CancellationToken token)
+        {
+            _sessionPreparing = true;
+            var reportReady = false;
+
+            try
+            {
+                if (!await EnsureHardwareConnectedAsync(force: true).ConfigureAwait(false))
+                {
+                    Logger.Warning("[MLAstro][Broker] No link to the alignment hardware when the session started; reporting not ready.");
+                    SetStatus("No link to the alignment hardware");
+                    // Comes out as "not ready" because the session is still preparing, which is exactly what TPPA has to
+                    // read while the hardware is not taken over yet.
+                    await PublishReadinessAsync(SessionId, SessionId).ConfigureAwait(false);
+                    return;
+                }
+
+                if (!_aligner.IsHardwareReady)
+                {
+                    if (_aligner.ReportsAxesIdle)
+                    {
+                        // The device was just connected: the firmware already reports the axes as idle and only the ready
+                        // debounce has to elapse. That is not a travel anybody has to confirm.
+                        Logger.Info("[MLAstro][Broker] The hardware reports its axes as idle; waiting for the ready debounce.");
+                        var settled = await _aligner.WaitUntilIdleAsync(PauseSettleTimeout).ConfigureAwait(false);
+                        Logger.Info(settled
+                            ? "[MLAstro][Broker] The axes are idle and ready; readiness is reported to TPPA."
+                            : $"[MLAstro][Broker] The axes did not hold their idle state for the ready debounce within {PauseSettleTimeout.TotalSeconds:0} s.");
+                    }
+                    else
+                    {
+                        Logger.Info($"[MLAstro][Broker] The axes are not idle when the session starts (STATUS: {_aligner.DeviceStatus}).");
+                        SetStatus($"Axes turning ({_aligner.DeviceStatus}) - waiting for the operator");
+
+                        if (!ConfirmStopRunningTravel())
+                        {
+                            // Without the confirmation the axes stay as they are: TPPA is told clearly instead of being
+                            // left with a controller it would have to wait out.
+                            Logger.Warning("[MLAstro][Broker] The STOP was not confirmed; ending the session before TPPA waits for the hardware.");
+                            SetStatus("Alignment run cancelled: the axes were not stopped");
+                            await AbortSessionAsync(BridgeReason.NoControllerReady).ConfigureAwait(false);
+                            return;
+                        }
+
+                        await _aligner.StopAsync().ConfigureAwait(false);
+                        var idle = await _aligner.WaitUntilIdleAsync(PauseSettleTimeout).ConfigureAwait(false);
+                        Logger.Info(idle
+                            ? "[MLAstro][Broker] The axes stand still after the confirmed STOP; readiness is reported to TPPA."
+                            : $"[MLAstro][Broker] The axes did not report idle within {PauseSettleTimeout.TotalSeconds:0} s after the confirmed STOP.");
+                    }
+                }
+
+                reportReady = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[MLAstro][Broker] Failed to prepare the hardware for the session: {ex.Message}");
+            }
+            finally
+            {
+                // The axes are taken over (or the attempt is over), so readiness reports the real state again.
+                _sessionPreparing = false;
+            }
+
+            if (reportReady)
+            {
+                await PublishReadinessAsync(SessionId, SessionId).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// The operator confirms (or refuses) the STOP of a travel that is still running. Returns true when nothing
+        /// has to be confirmed or the operator confirmed it.
+        /// </summary>
+        private bool ConfirmStopRunningTravel()
+        {
+            var handler = HardwareBusyConfirmationRequested;
+            if (handler == null) { return true; }
+
+            var request = new HardwareBusyConfirmationRequest(_aligner.DeviceStatus, _aligner.LinkDescription);
+            try
+            {
+                handler(this, request);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+                return false;
+            }
+
+            return request.Confirmed;
         }
 
         private void HandleSessionEnded(BridgeEnvelope envelope)
@@ -1485,6 +1643,20 @@ namespace MLAstroRPA.Broker
         /// the moves of that axis are the direction probe and TPPA shows "detecting direction" instead of "adjusting".
         /// </summary>
         private readonly bool[] _axisDirectionConfirmed = new bool[2];
+
+        /// <summary>
+        /// Forgets everything the interrupted step knew about the axes: an axis counts as not commanded, so the next
+        /// measurement is not judged as if a move had completed, and the growth streak of a probe that was cut short
+        /// does not count towards a wrong direction. The sweep anchor is kept - it belongs to the session, not to the
+        /// step - and the next move is planned from the new measurement alone, never from the travel that was stopped.
+        /// </summary>
+        private void ResetDirectionTrackingAfterInterruption()
+        {
+            _axisCommandedLastStep[0] = false;
+            _axisCommandedLastStep[1] = false;
+            _axisIncreaseStreak[0] = 0;
+            _axisIncreaseStreak[1] = 0;
+        }
 
         /// <summary>
         /// True while the given plan still probes a direction: it moves an axis whose direction has not been
