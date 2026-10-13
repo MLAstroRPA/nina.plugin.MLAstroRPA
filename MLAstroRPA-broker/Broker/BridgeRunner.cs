@@ -1085,11 +1085,11 @@ namespace MLAstroRPA.Broker
 
                         if (!ConfirmStopRunningTravel())
                         {
-                            // Without the confirmation the axes stay as they are: TPPA is told clearly instead of being
-                            // left with a controller it would have to wait out.
-                            Logger.Warning("[MLAstro][Broker] The STOP was not confirmed; ending the session before TPPA waits for the hardware.");
-                            SetStatus("Alignment run cancelled: the axes were not stopped");
-                            await AbortSessionAsync(BridgeReason.NoControllerReady).ConfigureAwait(false);
+                            // Without the confirmation the axes are left exactly as they are: this side keeps reporting that
+                            // it is not ready, so TPPA's own readiness timeout ends the run and reports it. The controller
+                            // does not take that decision away from the operator by cancelling the session here.
+                            Logger.Warning("[MLAstro][Broker] The STOP was not confirmed; the axes are left as they are and TPPA reports the run as not ready.");
+                            SetStatus("Axes left as they are - the alignment run cannot start");
                             return;
                         }
 

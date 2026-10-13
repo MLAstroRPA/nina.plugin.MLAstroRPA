@@ -933,7 +933,7 @@ namespace MLAstroRPA.Plugin
                         "Stop the running travel now, so the reference frames are captured with the axes standing still?" + Environment.NewLine +
                         Environment.NewLine +
                         "OK = stop the axes and hand them over to the alignment run." + Environment.NewLine +
-                        "Cancel = leave the axes as they are and end the alignment run.",
+                        "Cancel = leave the axes exactly as they are; the alignment run then reports that the controller was not ready.",
                         "MLAstroRPA - auto polar alignment starting",
                         MessageBoxButton.OKCancel,
                         MessageBoxImage.Warning);
@@ -958,7 +958,7 @@ namespace MLAstroRPA.Plugin
             request.Confirmed = confirmed;
             AppendBrokerLog(confirmed
                 ? "Auto PA starting: the operator confirmed the STOP of the running travel."
-                : "Auto PA starting: the operator declined the STOP, so the session is ended.");
+                : "Auto PA starting: the operator declined the STOP; the axes are left as they are and TPPA reports the run as not ready.");
         }
 
         private void StopBridge()
