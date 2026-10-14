@@ -2,6 +2,7 @@
 
 ## 3.3.0.0 — 2026-10-14
 
+- Fixed — a firmware link that comes up inside the broker's connection ladder is remembered even though the ladder suppresses the link-loss notification: without it the plugin believed the link had never existed after the first loss, so a cable pulled while TPPA was still measuring the three reference frames was ignored and the run went on
 - Fixed — a firmware link that is lost after the axes were handed over ends the session with a fault instead of answering measurements from a dead link: the broker checks the link once a second, so a pulled cable or a closed connection cancels the run instead of leaving it waiting until the operator stops it by hand
 - Fixed — a message that TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
 
