@@ -1,7 +1,7 @@
 <Window x:Class="MLAstroRPA.Plugin.HardwareBusyConfirmDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Warning: controller system is not ready"
+        Title="Warning: MLAstroRPA system is not ready"
         Background="{DynamicResource BackgroundBrush}"
         Foreground="{DynamicResource ForegroundBrush}"
         WindowStyle="None"
@@ -23,10 +23,10 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,6,0,0" />
                 </Grid>
                 <StackPanel Grid.Column="1">
-                    <TextBlock x:Name="TitleText" Text="Warning: controller system is not ready"
+                    <TextBlock x:Name="TitleText" Text="Warning: MLAstroRPA system is not ready"
                                FontSize="17" FontWeight="Bold" TextWrapping="Wrap" />
                     <TextBlock x:Name="HeadlineText" Margin="0,6,0,0" TextWrapping="Wrap" Opacity="0.85"
-                               Text="The MLAstro axes are still turning. Stop the travel, so the three reference frames are captured with the axes standing still?" />
+                               Text="The MLAstroRPA hardware axes maybe are moving. TPPA is waiting about 30s for checking readiness. You can stop the axes and continue or skip to wait until they are ready." />
                 </StackPanel>
             </Grid>
 

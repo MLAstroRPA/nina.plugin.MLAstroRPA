@@ -512,6 +512,14 @@ namespace MLAstroRPA.Plugin
         private static double Luminance(Color color)
             => ((0.299 * color.R) + (0.587 * color.G) + (0.114 * color.B)) / 255.0;
 
+        private void OnSerialTerminalDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (sender is not RichTextBox richTextBox) { return; }
+
+            richTextBox.DataContextChanged -= OnSerialTerminalDataContextChanged;
+            OnSerialTerminalLoaded(richTextBox, new RoutedEventArgs());
+        }
+
         private void OnSerialTerminalLoaded(object sender, RoutedEventArgs e)
         {
             if (sender is not RichTextBox richTextBox || richTextBox.Tag is TerminalSubscriptionState)
@@ -521,6 +529,11 @@ namespace MLAstroRPA.Plugin
 
             if (richTextBox.DataContext is not MLAstroController manifest)
             {
+                // The view can load before NINA hands it the options view-model. Giving up here left the terminal
+                // empty for the whole session although the link was connected: wait for the data context and attach
+                // as soon as it arrives.
+                richTextBox.DataContextChanged -= OnSerialTerminalDataContextChanged;
+                richTextBox.DataContextChanged += OnSerialTerminalDataContextChanged;
                 return;
             }
 
