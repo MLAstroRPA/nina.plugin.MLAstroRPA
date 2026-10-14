@@ -1,10 +1,9 @@
 ﻿# Changelog
 
-## 3.3.1.0 — 2026-10-14
+## 3.3.0.0 — 2026-10-14
 
-- Fixed — a firmware link that is lost after the axes were handed over ends the session with a fault instead of answering measurements from a dead link: the broker checks the link once a second, so a pulled cable or a closed connection cancels the run instead of leaving it waiting until the operator stops it by hand: a message TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
-
-## 3.3.0.0 — 2026-10-11
+- Fixed — a firmware link that is lost after the axes were handed over ends the session with a fault instead of answering measurements from a dead link: the broker checks the link once a second, so a pulled cable or a closed connection cancels the run instead of leaving it waiting until the operator stops it by hand
+- Fixed — a message that TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
 
 - Added — SOFTWARE SETTING has an "Auto pause TPPA after solved three point" switch (on by default): the controller then holds the run by publishing TPPA's own pause message, with a toast that says the solve is finished and that RESUME starts the correction. The hold waits until the correction is about to move the axes, so a result that is already inside the tolerance is finished by TPPA without a pause
 - Removed — broker members that nothing referenced: the diagnostic snapshot of the last measurement, the emergency-stop call of the hardware aligner and the constant that named this controller as a recipient, plus the supported-kind helper of the capabilities payload
