@@ -72,17 +72,19 @@ namespace MLAstroRPA.Plugin
         /// </summary>
         private void AbortSessionIfLinkJustLost(string detail)
         {
-            if (_serialConnectionService.SuppressLinkLossNotification)
-            {
-                // The broker is switching ports on purpose (looking for the controller): not a loss. The knowledge
-                // that the link was up is KEPT here: the ladder connects while the suppression is on, so clearing it
-                // would make the next real loss look like a link that never existed.
-                return;
-            }
-
+            // The link that is up is remembered FIRST, even while the warnings are suppressed: the broker brings the
+            // link up inside its connection ladder, and that ladder suppresses the link-loss notification. Recording
+            // it only outside the suppression leaves the plugin believing the link never existed, and the next real
+            // loss - a pulled cable while TPPA is still measuring its three reference frames - passes unnoticed.
             if (_serialConnectionService.IsConnected || _webSocketService.IsConnected)
             {
                 _linkWasConnected = true;
+                return;
+            }
+
+            if (_serialConnectionService.SuppressLinkLossNotification)
+            {
+                // The broker is switching ports on purpose (looking for the controller): not a loss.
                 return;
             }
 
