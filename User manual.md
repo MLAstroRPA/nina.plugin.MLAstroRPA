@@ -251,6 +251,7 @@ Above the expander, two status lines report the broker state and the current ses
 | Control | What it does |
 |---|---|
 | **Assign to Three Point Polar Alignment plugin** | When on, the plugin announces its capabilities on the NINA message broker, receives the error from TPPA and drives the motors. TPPA must be told to hand the session over (see the [workflow](#polar-alignment-workflow-with-tppa)). |
+| **Auto pause TPPA after solved three point** | When on (default), the plugin holds the run as soon as the correction would move the axes for the first time: it asks TPPA to pause and a toast tells you to press **RESUME** in TPPA, so the measured result and the setup can be checked before the motors start. A result that is already inside the tolerance is never paused — TPPA finishes that run on its own. Turn it off when a run has to correct without stopping. |
 | **Correction axis mode** | `Both axes` = one ALIGN command moves both axes together. `Larger error axis` = only the axis with the bigger remaining error is moved, the other is measured again first. |
 | **Correction factor** | Multiplied into the measured error before the move is sent (0.75 = correct 75 % of it). The altitude axis uses the full error instead when overshoot runs for that direction. |
 | **Automated adjustment settle time (s)** | Seconds the plugin waits after a correction move before it asks TPPA for the next measurement, so the axis can settle (backlash, vibration). `0` = measure straight away. |
@@ -265,6 +266,10 @@ Above the expander, two status lines report the broker state and the current ses
 Live log of the plugin ↔ TPPA traffic:
 **RPA → TPPA (blue)** = sent to TPPA · **TPPA → RPA (green)** = received from TPPA ·
 **notice (yellow)** = local status of this plugin.
+
+If the firmware link is lost while the axes are handed over (cable pulled, connection closed), the plugin
+reports a fault to TPPA and the run is cancelled — it does not keep waiting for hardware that is gone.
+Reconnect and start the polar alignment again.
 
 ---
 
