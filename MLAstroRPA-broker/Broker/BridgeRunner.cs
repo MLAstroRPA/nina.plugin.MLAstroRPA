@@ -960,14 +960,17 @@ namespace MLAstroRPA.Broker
         /// </summary>
         private async Task PublishReadinessAsync(string sessionId, string activeSessionId)
         {
-            // While the session is still taking the axes over, the hardware is reported as not ready even when the
-            // firmware already says READY: TPPA must not start on a controller that has not finished the take-over.
-            var ready = !_sessionPreparing && _aligner.IsHardwareReady;
+            // Readiness always reports the state of the axes: a travel that is still running is handed over as not ready,
+            // and one that ended while the operator was deciding in front of the confirmation dialog becomes ready at
+            // once. The take-over flag only refines the note, it must never hold the ready state back - otherwise the
+            // operator's thinking time would eat TPPA's readiness budget and the run would fail on a controller that is
+            // standing still.
+            var ready = _aligner.IsHardwareReady;
             var status = _aligner.DeviceStatus;
             var note = ready
                 ? null
-                : _sessionPreparing
-                    ? "the controller is bringing its hardware up"
+                : _sessionPreparing && _aligner.ReportsAxesIdle
+                    ? "the controller is still taking the axes over"
                     : _aligner.IsConnected
                         ? $"hardware busy (STATUS: {status})"
                         : "no hardware link";
@@ -1093,10 +1096,15 @@ namespace MLAstroRPA.Broker
                             return;
                         }
 
-                        await _aligner.StopAsync().ConfigureAwait(false);
+                        // Nothing is left to stop when the travel ended by itself while the operator was deciding.
+                        if (!_aligner.IsHardwareReady)
+                        {
+                            await _aligner.StopAsync().ConfigureAwait(false);
+                        }
+
                         var idle = await _aligner.WaitUntilIdleAsync(PauseSettleTimeout).ConfigureAwait(false);
                         Logger.Info(idle
-                            ? "[MLAstro][Broker] The axes stand still after the confirmed STOP; readiness is reported to TPPA."
+                            ? "[MLAstro][Broker] The axes stand still; readiness is reported to TPPA."
                             : $"[MLAstro][Broker] The axes did not report idle within {PauseSettleTimeout.TotalSeconds:0} s after the confirmed STOP.");
                     }
                 }

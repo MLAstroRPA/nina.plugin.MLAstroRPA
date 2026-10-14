@@ -2,6 +2,7 @@
 
 ## 3.3.0.0 — 2026-10-11
 
+- Fixed — readiness reports the real state of the axes again: a travel that ended on its own while the operator was still deciding in front of the confirmation dialog is handed over as ready at once, so the operator's thinking time can no longer eat TPPA's readiness window and fail a run on a controller that is standing still
 - Changed — refusing the STOP of a running travel now leaves the axes exactly as they are instead of ending the session: the controller keeps reporting that it is not ready, so TPPA reports the failure with its own readiness timeout
 - Fixed — taking the axes over at the start of a run only asks the operator for a STOP when the firmware really reports a moving axis (a device that was just connected only has to hold its idle state for the ready debounce), and readiness stays "not ready" until the take-over is finished, so TPPA can no longer start the reference frames on a controller that is still bringing its axes up
 
