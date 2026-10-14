@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 3.3.1.0 — 2026-10-14
+
+- Fixed — the controller only answers traffic addressed to it: a message TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
+
 ## 3.3.0.0 — 2026-10-11
 
 - Added — SOFTWARE SETTING has an "Auto pause TPPA after solved three point" switch (on by default): the controller then holds the run by publishing TPPA's own pause message, with a toast that says the solve is finished and that RESUME starts the correction. The hold waits until the correction is about to move the axes, so a result that is already inside the tolerance is finished by TPPA without a pause

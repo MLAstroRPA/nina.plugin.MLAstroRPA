@@ -207,6 +207,17 @@ namespace MLAstroRPA.Broker
                 return Task.CompletedTask;
             }
 
+            // TPPA addresses everything it publishes to the controller it is working with - the name that controller
+            // announced (this build announces MLAstroRPA). Traffic addressed to another controller belongs to that
+            // controller and is dropped here: that is what lets two MLAstro builds (e.g. this plugin and a _Test
+            // build) listen on the same topic while only the selected one drives its own hardware.
+            if (!string.IsNullOrEmpty(envelope.IntendedRecipient)
+                && !string.Equals(envelope.IntendedRecipient, BridgeContract.ControllerName, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Debug($"[MLAstro][Broker] Ignored a '{envelope.Kind}' message addressed to '{envelope.IntendedRecipient}'.");
+                return Task.CompletedTask;
+            }
+
             RaiseTraffic(BrokerLogDirection.Rx, BrokerTrafficText.Received(envelope));
 
             if (string.Equals(envelope.Kind, BridgeKind.Capabilities, StringComparison.Ordinal))
