@@ -5,6 +5,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq; 
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -925,30 +926,80 @@ namespace MLAstroRPA.Plugin
             try
             {
                 var dispatcher = Application.Current?.Dispatcher;
+
+                HardwareBusyLiveState readLiveState()
+                {
+                    var telemetry = _serialConnectionService.LastTelemetry;
+                    return new HardwareBusyLiveState(
+                        telemetry?.Status ?? "no telemetry yet",
+                        request.LinkPath,
+                        telemetry?.AzMovedDegrees ?? 0,
+                        telemetry?.AzMovedPosition,
+                        telemetry?.AltMovedDegrees ?? 0,
+                        telemetry?.AltMovedPosition,
+                        // A status that is missing counts as ready elsewhere (a missing poll must not block a run), but
+                        // this dialog may only close itself on a status that really says the axes stand still.
+                        _serialConnectionService.IsDeviceIdle && !string.IsNullOrWhiteSpace(telemetry?.Status));
+                }
+
                 void ask()
                 {
-                    var answer = MessageBox.Show(
-                        "Auto polar alignment is starting and the MLAstro axes are still turning " +
-                        $"(STATUS: {request.HardwareStatus})." + Environment.NewLine + Environment.NewLine +
-                        "Stop the running travel now, so the reference frames are captured with the axes standing still?" + Environment.NewLine +
-                        Environment.NewLine +
-                        "OK = stop the axes and hand them over to the alignment run." + Environment.NewLine +
-                        "Cancel = leave the axes exactly as they are; the alignment run then reports that the controller was not ready.",
-                        "MLAstroRPA - auto polar alignment starting",
-                        MessageBoxButton.OKCancel,
-                        MessageBoxImage.Warning);
+                    HardwareBusyClickShield shield = null;
+                    try
+                    {
+                        var host = Application.Current?.MainWindow;
 
-                    confirmed = answer == MessageBoxResult.OK;
+                        // The dialog is modal, so Windows disables the NINA window and drops every click that lands on
+                        // it (only its warning sound is heard). This invisible shield lies over that window and is
+                        // enabled, so a click next to the dialog arrives here instead and the dialog can shake and come
+                        // back to the front. It appears with the dialog - nothing is covered before that - and a click
+                        // inside the frame of the dialog is ignored by it.
+                        shield = new HardwareBusyClickShield(host);
+
+                        var dialog = new HardwareBusyConfirmDialog(readLiveState) {
+                            Owner = host,
+                            // Both windows live above NINA: the shield catches the clicks next to the dialog, while the
+                            // dialog - activated last - stays on top of it and of everything else on the desktop.
+                            Topmost = true
+                        };
+                        shield.Dialog = dialog;
+                        shield.Clicked += (_, __) => {
+                            Logger.Info("[MLAstro][Broker] Click next to the confirmation dialog: the dialog is reminded.");
+                            dialog.ShakeAndBringToFront();
+                        };
+                        dialog.Loaded += (_, __) => {
+                            shield.Follow();
+                            shield.Show();
+                            Logger.Info("[MLAstro][Broker] Click shield over the NINA window is up; clicks next to the dialog remind it.");
+                        };
+
+                        dialog.ShowDialog();
+
+                        // "Nothing to stop" is the case where the axes finished their travel while the operator was
+                        // deciding, so the run may continue - the caller only stops axes that are still moving.
+                        confirmed = dialog.Answer == true || dialog.NothingToStop;
+                    }
+                    catch (Exception ex)
+                    {
+                        // This question must never disappear silently, so the system dialog asks it when the window of
+                        // the plugin cannot be shown.
+                        Logger.Error($"[MLAstro][Broker] Failed to show the confirmation dialog: {ex.Message}");
+                        confirmed = MessageBox.Show(
+                            "Auto polar alignment is starting and the MLAstro axes are still turning " +
+                            $"(STATUS: {request.HardwareStatus})." + Environment.NewLine + Environment.NewLine +
+                            "Stop the running travel now, so the reference frames are captured with the axes standing still?",
+                            "MLAstroRPA - auto polar alignment starting",
+                            MessageBoxButton.OKCancel,
+                            MessageBoxImage.Warning) == MessageBoxResult.OK;
+                    }
+                    finally
+                    {
+                        try { shield?.Close(); } catch (Exception) { }
+                    }
                 }
 
-                if (dispatcher != null && !dispatcher.CheckAccess())
-                {
-                    dispatcher.Invoke(new Action(ask));
-                }
-                else
-                {
-                    ask();
-                }
+                if (dispatcher != null && !dispatcher.CheckAccess()) { dispatcher.Invoke(new Action(ask)); } else { ask(); }
+
             }
             catch (Exception ex)
             {
