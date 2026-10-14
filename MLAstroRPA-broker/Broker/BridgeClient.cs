@@ -187,6 +187,15 @@ namespace MLAstroRPA.Broker
             return PublishAsync(BridgeKind.Capabilities, null, announce);
         }
 
+        /// <summary>
+        /// Asks TPPA to hold the alignment run by publishing on TPPA's own pause topic: the operator then sees the
+        /// three-point result and the RESUME button, exactly like a pause that was pressed in TPPA's window.
+        /// </summary>
+        public Task RequestTppaPauseAsync()
+        {
+            return _broker.Publish(new TppaPauseMessage());
+        }
+
         public Task OnMessageReceived(IMessage message)
         {
             if (message == null || _disposed) { return Task.CompletedTask; }

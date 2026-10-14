@@ -728,6 +728,16 @@
                                        FontWeight="SemiBold"
                                        FontSize="14" />
                         </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <CheckBox IsChecked="{Binding AutoPauseAfterReferenceSweep}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0"
+                                      ToolTip="Holds the run just before the first correction move: the plugin asks TPPA to pause and reminds you to press RESUME there, so the measured result and the setup can be checked before the motors start. A result that is already inside the tolerance is never paused - TPPA finishes that run on its own. Off = the correction runs through without stopping." />
+                            <TextBlock Text="Auto pause TPPA after solved three point"
+                                       VerticalAlignment="Center"
+                                       FontSize="14" />
+                        </StackPanel>
                          
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>

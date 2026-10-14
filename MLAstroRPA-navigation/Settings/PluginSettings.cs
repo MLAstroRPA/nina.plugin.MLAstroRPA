@@ -492,6 +492,19 @@ namespace MLAstroRPA.Settings
             set => SetBool(value);
         }
 
+        /// <summary>
+        /// When on, the controller asks TPPA to hold the run as soon as the correction would move the axes for the
+        /// first time: the operator sees the measured result and can fix the setup before the motors start, and the
+        /// run goes on when RESUME is pressed in TPPA. A result that is already inside the tolerance never leaves
+        /// TPPA's own verify path, so such a run is finished by TPPA without a pause. Off = the correction runs
+        /// through without stopping.
+        /// </summary>
+        public bool AutoPauseAfterReferenceSweep
+        {
+            get => GetBool(nameof(AutoPauseAfterReferenceSweep), true);
+            set => SetBool(value);
+        }
+
         /// <summary>Correction strategy: Both = one ALIGN command for both axes, Auto = only the axis with the larger error.</summary>
         public BridgeAxisMode CorrectionAxisMode
         {

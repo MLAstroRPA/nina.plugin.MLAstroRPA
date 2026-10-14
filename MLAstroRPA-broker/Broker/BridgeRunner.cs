@@ -65,16 +65,6 @@ namespace MLAstroRPA.Broker
         private const int MaxConfirmedGrowthMeasurements = 3;
 
         /// <summary>
-        /// TEST-ONLY: the wrong-direction guard is switched off while the run is tested against the simulator, whose
-        /// errors do not follow the real axis behaviour. With it off, a growing error is not judged at all: no
-        /// automatic direction flip, no "not converging" warning and no session abort - the axes keep being
-        /// corrected from the measured error alone. Set it back to true (or delete this flag and the two early
-        /// returns that read it: <see cref="TrackAxisError"/> and <see cref="HandleAxisGrowthAsync"/>) to re-enable
-        /// the guard.
-        /// </summary>
-        private const bool DirectionGuardEnabled = false;
-
-        /// <summary>
         /// Consecutive solves inside the tolerance that TPPA has to report before this controller asks it
         /// to finish. TPPA counts them itself; this is only the fallback for a build that publishes the
         /// counter without the ready flag.
@@ -129,6 +119,12 @@ namespace MLAstroRPA.Broker
 
         /// <summary>1 once TPPA finished the three reference points and hands the correction over.</summary>
         private int _handoverStarted;
+
+        /// <summary>
+        /// 1 once the controller asked TPPA to hold the run before the first correction move, so the pause is asked for
+        /// once per session - and only when the run really has to move the axes.
+        /// </summary>
+        private int _pausedBeforeCorrection;
 
         /// <summary>True while TPPA reported that the operator paused the run.</summary>
         private bool IsPaused
@@ -1270,6 +1266,21 @@ namespace MLAstroRPA.Broker
                 return;
             }
 
+            // The measured error is in and this plan really moves the axes: hold the run here once, so the operator can
+            // check the result and the setup before the motors start. A result that is already inside the tolerance
+            // never reaches this point (the verify path above answers it), so a run that needs no correction is never
+            // paused and TPPA finishes it on its own. TPPA pauses exactly like a pause pressed in its own window, and
+            // pressing RESUME there starts the correction.
+            if (_settings.AutoPauseAfterReferenceSweep && Interlocked.CompareExchange(ref _pausedBeforeCorrection, 1, 0) == 0)
+            {
+                await _client.RequestTppaPauseAsync().ConfigureAwait(false);
+                const string heldText = "Three point solve finished - the correction is paused. Press RESUME in Three Point Polar Alignment to start it.";
+                Logger.Info($"[MLAstro][Broker] Asked TPPA to hold the run before the first move. {heldText}");
+                SetStatus("Held before the first move - press RESUME in TPPA");
+                try { NINA.Core.Utility.Notification.Notification.ShowInformation(heldText, TimeSpan.FromSeconds(30)); } catch { }
+                return;
+            }
+
             // The direction detection watches both axes themselves (see TrackAxisError), so nothing of the
             // measured error has to be remembered here.
             SetStatus($"Adjusting: {plan.Reason}");
@@ -1574,6 +1585,7 @@ namespace MLAstroRPA.Broker
                 _stopping = false;
                 // A new session is not handed over yet: a manual STOP stays ignored until the reference sweep ends.
                 Volatile.Write(ref _handoverStarted, 0);
+                Volatile.Write(ref _pausedBeforeCorrection, 0);
                 // The direction detection starts from scratch in every session.
                 for (var i = 0; i < 2; i++)
                 {
@@ -1699,15 +1711,6 @@ namespace MLAstroRPA.Broker
                 return null;
             }
 
-            if (!DirectionGuardEnabled)
-            {
-                // TEST-ONLY: head of the wrong-direction guard (see DirectionGuardEnabled). The sign of the error is
-                // not judged, so no axis is confirmed, no growth is reported and the correction is planned from the
-                // measured error alone.
-                _axisIncreaseStreak[index] = 0;
-                return null;
-            }
-
             if (Math.Abs(errorArcMin) <= toleranceArcMin)
             {
                 // Inside the tolerance the sign is meaningless (solve noise may sit on either side of the target).
@@ -1768,14 +1771,6 @@ namespace MLAstroRPA.Broker
         /// </summary>
         private async Task<bool> HandleAxisGrowthAsync(string axisName, int index)
         {
-            if (!DirectionGuardEnabled)
-            {
-                // TEST-ONLY: head of the wrong-direction guard - a growing error must not end the session while the
-                // simulator is being used. The reference side is forgotten so a later re-enable starts clean.
-                _axisIncreaseStreak[index] = 0;
-                return false;
-            }
-
             if (_axisDirectionConfirmed[index])
             {
                 var referenceArcMin = _axisReferenceErrorArcMin[index];
@@ -1898,18 +1893,6 @@ namespace MLAstroRPA.Broker
             if (!changed) { return; }
 
             try { StatusChanged?.Invoke(this, EventArgs.Empty); } catch (Exception ex) { Logger.Error(ex); }
-        }
-
-        /// <summary>Diagnostic snapshot used by the options page.</summary>
-        public string DescribeLastMeasurement()
-        {
-            lock (_gate)
-            {
-                if (_lastMeasurement == null) { return "no measurement yet"; }
-                return $"#{_lastMeasurement.SampleIndex}: total {_lastMeasurement.TotalErrorArcMin:0.##}' " +
-                       $"(az {_lastMeasurement.AzimuthErrorArcMin:0.##}', alt {_lastMeasurement.AltitudeErrorArcMin:0.##}'), " +
-                       $"tolerance {_lastMeasurement.ToleranceArcMin:0.##}'";
-            }
         }
 
         public void Dispose()

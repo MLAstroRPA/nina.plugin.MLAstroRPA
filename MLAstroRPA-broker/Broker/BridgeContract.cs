@@ -23,11 +23,15 @@ namespace MLAstroRPA.Broker
         /// <summary>Topic carrying messages published by this plugin (TPPA subscribes).</summary>
         public const string CommandTopic = "PolarAlignmentPlugin_PolarAlignment_ExternalCommand";
 
+        /// <summary>
+        /// Topic TPPA listens on to hold the alignment run. It belongs to TPPA's published contract (the same message
+        /// its own pause button sends), so a message here pauses the run with the three-point result on screen - the
+        /// correction then waits for RESUME. No bridge kind is involved.
+        /// </summary>
+        public const string TppaPauseTopic = "PolarAlignmentPlugin_PolarAlignment_PauseAlignment";
+
         /// <summary>Value used in <c>IntendedRecipient</c> for TPPA addressed messages.</summary>
         public const string BridgeRecipient = "TPPA";
-
-        /// <summary>Value used in <c>IntendedRecipient</c> for controller addressed messages.</summary>
-        public const string ControllerRecipient = "MLAstroRPA";
 
         /// <summary>Name this controller reports in the handshake.</summary>
         public const string ControllerName = "MLAstroRPA";
@@ -241,5 +245,24 @@ namespace MLAstroRPA.Broker
         {
             return Guid.TryParse(NINA.Plugins.MLAstroRPA.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
         }
+    }
+
+    /// <summary>
+    /// Message that asks TPPA to hold the run. TPPA only reads the topic of this message, which is why it carries no
+    /// bridge envelope: the controller hands the run back to the operator between the reference sweep and the
+    /// correction.
+    /// </summary>
+    public sealed class TppaPauseMessage : IMessage
+    {
+        public Guid SenderId => Guid.TryParse(NINA.Plugins.MLAstroRPA.MLAstroPlugin.PluginId, out var id) ? id : Guid.Empty;
+        public string Sender => "MLAstroRPA";
+        public DateTimeOffset SentAt => DateTime.UtcNow;
+        public Guid MessageId => Guid.NewGuid();
+        public DateTimeOffset? Expiration => null;
+        public Guid? CorrelationId => null;
+        public int Version => BridgeContract.InterfaceVersion;
+        public IDictionary<string, object> CustomHeaders => new Dictionary<string, object>();
+        public string Topic => BridgeContract.TppaPauseTopic;
+        public object Content => string.Empty;
     }
 }

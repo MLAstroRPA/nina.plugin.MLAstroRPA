@@ -681,6 +681,21 @@ namespace MLAstroRPA.Plugin
             }
         }
 
+        /// <summary>
+        /// When on, TPPA is asked to hold the run just before the first correction move, so the operator can check the
+        /// measured result and the setup and start the correction with RESUME in TPPA. A result that is already
+        /// inside the tolerance is never paused - TPPA finishes that run on its own.
+        /// </summary>
+        public bool AutoPauseAfterReferenceSweep
+        {
+            get => Settings.AutoPauseAfterReferenceSweep;
+            set
+            {
+                Settings.AutoPauseAfterReferenceSweep = value;
+                OnPropertyChanged();
+            }
+        }
+
         public double CorrectionMaxStepArcMin
         {
             get => Settings.CorrectionMaxStepArcMin;

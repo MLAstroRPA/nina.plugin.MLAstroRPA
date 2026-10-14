@@ -23,16 +23,6 @@ namespace MLAstroRPA.Broker
         public int GraceAfterSilenceMs { get; set; }
         public int StopAckTimeoutMs { get; set; }
         public bool ContinuousEstimation { get; set; }
-
-        public bool Supports(string kind)
-        {
-            if (SupportedKinds == null) { return false; }
-            foreach (var candidate in SupportedKinds)
-            {
-                if (string.Equals(candidate, kind, StringComparison.Ordinal)) { return true; }
-            }
-            return false;
-        }
     }
 
     /// <summary>Payload we publish to announce ourselves on the command topic.</summary>

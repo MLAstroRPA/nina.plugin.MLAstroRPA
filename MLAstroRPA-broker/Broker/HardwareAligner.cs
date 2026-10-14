@@ -325,25 +325,6 @@ namespace MLAstroRPA.Broker
             }
         }
 
-        /// <summary>Sends an emergency stop to the firmware.</summary>
-        public Task EmergencyStopAsync()
-        {
-            try
-            {
-                if (_serial.IsConnected)
-                {
-                    _serial.Send("ESTOP:1\n");
-                    Logger.Info("[MLAstro][Broker] Sent ESTOP to the hardware.");
-                }
-                return Task.CompletedTask;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[MLAstro][Broker] Failed to emergency stop the hardware: {ex.Message}");
-                return Task.CompletedTask;
-            }
-        }
-
         private void OnCompletionReceived(object sender, string completionType)
         {
             if (string.IsNullOrEmpty(completionType)) { return; }
