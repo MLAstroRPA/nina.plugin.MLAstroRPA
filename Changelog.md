@@ -2,7 +2,7 @@
 
 ## 3.3.1.0 — 2026-10-14
 
-- Fixed — the controller only answers traffic addressed to it: a message TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
+- Fixed — a firmware link that is lost after the axes were handed over ends the session with a fault instead of answering measurements from a dead link: the broker checks the link once a second, so a pulled cable or a closed connection cancels the run instead of leaving it waiting until the operator stops it by hand: a message TPPA addresses to another controller is dropped with a debug line, so two MLAstro builds (this plugin and a _Test build, each with its own GUID) can listen on the same topic while only the selected one drives its own hardware
 
 ## 3.3.0.0 — 2026-10-11
 

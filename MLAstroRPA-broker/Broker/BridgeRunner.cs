@@ -1554,6 +1554,17 @@ namespace MLAstroRPA.Broker
         {
             if (!IsSessionRunning) { return; }
 
+            // The controller is the only side that sees the hardware: once the axes were handed over, a link that is
+            // gone means they can neither be moved nor verified, so the session is ended with a fault instead of
+            // answering measurements from a dead link until the operator stops the run by hand. The connection ladder
+            // opens and closes ports on purpose and suppresses this check.
+            if (Volatile.Read(ref _handoverStarted) == 1 && !_aligner.IsConnected && !_aligner.SuppressLinkLossNotification)
+            {
+                Logger.Warning("[MLAstro][Broker] The firmware link is gone while the session is running. Reporting a fault so TPPA cancels the run.");
+                _ = EndSessionForLostLinkAsync();
+                return;
+            }
+
             var capabilities = _client.Capabilities;
             var silenceLimitMs = capabilities?.SilenceTimeoutMs > 0
                 ? Math.Max(10000, capabilities.SilenceTimeoutMs)
@@ -1570,6 +1581,17 @@ namespace MLAstroRPA.Broker
         {
             await AbortSessionAsync(BridgeReason.ExternalLost).ConfigureAwait(false);
             SetStatus("TPPA stopped answering");
+        }
+
+        /// <summary>
+        /// Ends the session when the firmware link disappeared after the axes were handed over: a fault is the only
+        /// honest answer, because the controller can neither move nor verify them any more. TPPA ends the run with it
+        /// and the operator reconnects and starts again.
+        /// </summary>
+        private async Task EndSessionForLostLinkAsync()
+        {
+            await PublishFaultAndEndAsync(BridgeReason.FirmwareDisconnected,
+                                          "The link to the alignment hardware was lost during the session.").ConfigureAwait(false);
         }
 
         private void ResetSessionState()

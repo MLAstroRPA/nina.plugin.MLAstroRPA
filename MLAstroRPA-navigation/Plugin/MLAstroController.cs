@@ -74,8 +74,9 @@ namespace MLAstroRPA.Plugin
         {
             if (_serialConnectionService.SuppressLinkLossNotification)
             {
-                // The broker is switching ports on purpose (looking for the controller): not a loss.
-                _linkWasConnected = false;
+                // The broker is switching ports on purpose (looking for the controller): not a loss. The knowledge
+                // that the link was up is KEPT here: the ladder connects while the suppression is on, so clearing it
+                // would make the next real loss look like a link that never existed.
                 return;
             }
 
