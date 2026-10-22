@@ -16,16 +16,19 @@ TPPA external-correction contract (in the Three Point Polar Alignment repository
 
 ## Polar alignment workflow (with TPPA)
 
-The plugin does not measure anything by itself: **TPPA measures, this plugin moves the axes.** TPPA keeps
-plate solving and estimating the polar error, while the plugin receives that error through the NINA
-message broker, turns it into moves and honours pause, stop and cancel.
+The plugins have separate jobs: **TPPA captures and measures; MLAstroRPA moves the axes.** TPPA performs
+the three-point acquisition, plate solving and error estimation. When TPPA is configured to use MLAstroRPA
+as its polar alignment system, the plugins coordinate through NINA's message broker: MLAstroRPA requests
+capture windows, corrects the mount and reports when it is ready for another measurement. TPPA remains
+in charge of the alignment session and its final verification.
 
 ### 1. What you need
 
-- A supported MLAstro RPA controller, connected over USB serial or Wi-Fi.
-- N.I.N.A. 3.1.2 or newer.
-- The **Three Point Polar Alignment** plugin installed, a camera, working plate solving, and a mount whose
-  right ascension axis can be moved.
+- A supported MLAstro RPA controller and the MLAstroRPA plugin, connected over USB serial or Wi-Fi.
+- N.I.N.A. 3.1.2 or newer, plus a version of the **Three Point Polar Alignment** plugin that supports
+  external controllers on the NINA message broker.
+- A camera, working plate solving, and a mount whose right ascension axis can be moved.
+- A non-zero alignment tolerance in TPPA. TPPA uses this tolerance for its completion check.
 - Gear ratio set so that each axis achieves roughly **1 arcminute per step**.
 
 ### 2. Connect the controller (CONNECTION tab)
@@ -35,7 +38,8 @@ message broker, turns it into moves and honours pause, stop and cancel.
    - Wireless: type the `Address` (`MLAstroRPA.local` or the device IP, see `AP:` / `STA:` in the header).
    - Serial: pick the `COM Port` (or press `Auto scan COM port`).
 3. Press **Connect**. `Handshake: OK!` confirms the link; the header then shows `Firmware …`,
-   `Status: …`, `AP: …` and `STA: …`.
+   `Status: …`, `AP: …` and `STA: …`. Start an alignment only when both axes are stationary. If a move
+   is already in progress when TPPA starts, MLAstroRPA asks before stopping it for the alignment session.
 
 ### 3. Prepare the device (HARDWARE SETTING tab)
 
@@ -45,9 +49,10 @@ Check **Soft Limits**, the **Motor Driver (TMC2209)** values (especially `Steps/
 
 ### 4. Enable the external correction (SOFTWARE SETTING tab)
 
-1. Turn on **Assign to Three Point Polar Alignment plugin**. The plugin now announces its capabilities on
-   the NINA message broker; while it is off, TPPA keeps its normal behaviour and no session is handed over.
-2. Set the correction strategy (they apply to the **next** session):
+1. Turn on **Assign to Three Point Polar Alignment plugin**. The plugin announces itself on NINA's
+   message broker. Confirm the status above the expander shows that TPPA is ready; while this switch is
+   off, MLAstroRPA is not available to TPPA.
+2. Set the correction strategy. These options are used by MLAstroRPA for the next correction session:
    - **Correction axis mode** — `Both axes` sends one ALIGN command for both axes, `Larger error axis`
      corrects only the axis with the bigger remaining error.
    - **Correction factor** — share of the measured error that is actually corrected (0.75 = 75 %).
@@ -60,36 +65,60 @@ Check **Soft Limits**, the **Motor Driver (TMC2209)** values (especially `Steps/
    - **Automated adjustment settle time (s)** — wait after each move before the next measurement is
      requested, so the axis can settle.
 
-### 5. Configure TPPA
-- When Asigned MLAstroRPA plugin in `SOFTWARE SETTING` no need to select any Polar alignment system on TPPA.
+### 5. Select MLAstroRPA in TPPA
+
+1. Open **Options → Plugins → Three Point Polar Alignment → Settings**.
+2. In **Polar Alignment System**, select **MLAstroRPA**. The entry is registered dynamically and is
+   available only while the MLAstroRPA broker switch is on and TPPA can see the announcement.
+3. Leave the TPPA system set to MLAstroRPA for this workflow. Selecting `None`, `UPAS` or `OAPA` runs
+   TPPA's other alignment path instead; TPPA does not automatically hand a run to MLAstroRPA just because
+   the two plugins are installed.
+
+TPPA still owns the camera, plate solving, error estimate, tolerance and session lifecycle. MLAstroRPA
+owns the physical AZ/ALT correction strategy. TPPA does not connect to the RPA controller separately.
 
 ### 6. Run the session
 
-1. Start TPPA (Advanced Sequencer instruction or the Imaging-tab tool pane) and let it run.
-2. TPPA takes the **three reference points** while the mount moves along right ascension only, then
-   publishes the first measurement. Until then the plugin does not move anything.
-3. From that point on the loop is: the plugin asks TPPA to hold the capture, TPPA grants a capture
-   window, the plugin **moves the axes**, waits the *settle time* and asks for the next measurement.
-   TPPA measures again and publishes the new error — this repeats until the tolerance is reached.
-4. **Pause** in TPPA stops the loop: the plugin stops a move in progress and does not start a new one.
-   **Stop / cancel** ends the session; TPPA is always the owner of the session.
-5. The plugin reports back when it believes it is done; TPPA verifies with its own policy and closes the
-   session with the final errors.
+1. Start TPPA from its Imaging-tab tool pane or the Advanced Sequencer instruction. MLAstroRPA checks
+   that it can reach the controller and that the axes are ready before TPPA takes the reference frames.
+   If the controller is unreachable or the axes cannot be made stationary, resolve that first; TPPA will
+   not safely hand off an unready controller.
+2. TPPA takes the **three reference points**, moving the mount along right ascension only. MLAstroRPA
+   does not correct AZ/ALT during this acquisition. After the sweep, TPPA publishes the first error.
+3. **First-correction safety pause:** **Auto pause TPPA after solved three point** is on by default. If
+   the first result needs a motor correction, MLAstroRPA asks TPPA to pause and displays a reminder.
+   Check the measured error and setup, then press **RESUME** in TPPA to start the correction. If the
+   result is already within tolerance, there is no motor move and no safety pause; TPPA proceeds to
+   verify and finish. Turn the option off only if you deliberately want a correction run without this
+   confirmation pause.
+4. During each correction cycle, MLAstroRPA asks TPPA for an adjustment window. TPPA holds its next
+   capture while MLAstroRPA moves the axes, waits the configured **Automated adjustment settle time**,
+   then requests a fresh measurement. TPPA solves and reports the new error; the cycle repeats as needed.
+   TPPA does not capture while a correction window is open.
+5. **Pause / resume:** use TPPA's controls to pause or resume the session. A pause stops an in-progress
+   correction and prevents another move; after **RESUME**, MLAstroRPA reports readiness and the workflow
+   continues with a fresh measurement. **Stop / cancel** ends the TPPA session. Pressing **STOP** or
+   **FORCE STOP** in MLAstroRPA also notifies TPPA that the controller stopped.
+6. When the error meets TPPA's finish condition, MLAstroRPA requests completion. TPPA takes its own
+   verification measurements and decides whether the alignment is achieved; if more correction is needed,
+   the session continues rather than treating the controller's estimate as final.
 
 ### 7. Watch what happens
 
 - **SOFTWARE SETTING → Broker log** shows the traffic:
   **RPA → TPPA (blue)** = sent to TPPA · **TPPA → RPA (green)** = received from TPPA ·
   **notice (yellow)** = local status of the plugin.
-- The two status lines above the *External correction* expander show the broker state and the current
-  session state.
-- The session also ends (with a reason written to the log) when the broker is switched off, the
-  controller is disconnected, the firmware link is lost, or the hardware faults.
+- The status lines above the *External correction* expander show TPPA/broker compatibility and the
+  current session state. Check these before starting if MLAstroRPA is missing from TPPA's system list.
+- The session ends with a reason in the log if the broker is switched off, the controller disconnects,
+  the firmware link is lost or the hardware reports a fault. Reconnect or clear the fault, then start a
+  new TPPA session; the integration does not silently switch to another correction system.
 
 ### 8. Rules of thumb
 
-- Keep the controller connected in **one plugin only**: the port and the controller firmware accept a
-  single session at a time.
+- Connect to the physical controller through **MLAstroRPA only**; the controller accepts one client
+  session at a time. TPPA communicates with MLAstroRPA through the broker and does not open another
+  controller connection.
 - Use `Backlash` compensation if the axis direction reverses during a correction, otherwise each
   reversal loses the mechanical play.
 - Keep the **soft limits** enabled: every correction move the plugin sends is refused outside them.
@@ -250,7 +279,7 @@ Above the expander, two status lines report the broker state and the current ses
 
 | Control | What it does |
 |---|---|
-| **Assign to Three Point Polar Alignment plugin** | When on, the plugin announces its capabilities on the NINA message broker, receives the error from TPPA and drives the motors. TPPA must be told to hand the session over (see the [workflow](#polar-alignment-workflow-with-tppa)). |
+| **Assign to Three Point Polar Alignment plugin** | When on, the plugin announces itself on the NINA message broker and can receive measurements and drive the motors. In TPPA, select **MLAstroRPA** under **Polar Alignment System** to use it (see the [workflow](#polar-alignment-workflow-with-tppa)). |
 | **Auto pause TPPA after solved three point** | When on (default), the plugin holds the run as soon as the correction would move the axes for the first time: it asks TPPA to pause and a toast tells you to press **RESUME** in TPPA, so the measured result and the setup can be checked before the motors start. A result that is already inside the tolerance is never paused — TPPA finishes that run on its own. Turn it off when a run has to correct without stopping. |
 | **Correction axis mode** | `Both axes` = one ALIGN command moves both axes together. `Larger error axis` = only the axis with the bigger remaining error is moved, the other is measured again first. |
 | **Correction factor** | Multiplied into the measured error before the move is sent (0.75 = correct 75 % of it). The altitude axis uses the full error instead when overshoot runs for that direction. |
