@@ -26,6 +26,57 @@ $OutputDir = Join-Path $MSIProjectDir "Output"
 $PackageWxs = Join-Path $MSIProjectDir "Package.wxs"
 $PluginCsproj = Join-Path $ProjectRoot "MLAstroRPA.csproj"
 
+# ========== STAGED PLUGIN DLLs (the MSI source folder) ==========
+# Package.wxs harvests the DLLs from Installer\MSI\Plugin\<plugin>\. They are no longer copied by the
+# plugin csproj (removed 2026-10-22); this script stages them AFTER the plugin build and BEFORE the
+# WiX build, so the package always carries the DLLs of the current build output.
+$StagedMLastroDllDir = Join-Path $MSIProjectDir "Plugin\MLAstroRPA"
+$StagedTppaDllDir = Join-Path $MSIProjectDir "Plugin\Three Point Polar Alignment"
+# The TPPA repository sits next to the Public folder: Code\Three Point Polar Alignment - PULL-REQUEST
+$TppaProjectDir = Join-Path (Split-Path -Parent (Split-Path -Parent $ProjectRoot)) "Three Point Polar Alignment - PULL-REQUEST"
+
+function Get-NewestDll {
+    param([string]$Root, [string]$FileName)
+    Get-ChildItem -Path $Root -Filter $FileName -Recurse -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+
+# Copies the MLAstroRPA DLL and the Three Point Polar Alignment DLL into the MSI source folder.
+# Fails when the MLAstroRPA DLL is missing; a missing TPPA DLL only warns when a staged copy exists.
+function Sync-MsiPluginDlls {
+    param([string]$Configuration)
+
+    $mlastro = Get-NewestDll -Root (Join-Path $ProjectRoot "bin\$Configuration") -FileName "NINA.Plugins.MLAstroRPA.dll"
+    if (-not $mlastro) {
+        throw "MLAstroRPA DLL not found under $ProjectRoot\bin\$Configuration - build the plugin first."
+    }
+    New-Item -ItemType Directory -Path $StagedMLastroDllDir -Force | Out-Null
+    Copy-Item -Path $mlastro.FullName -Destination (Join-Path $StagedMLastroDllDir "NINA.Plugins.MLAstroRPA.dll") -Force
+
+    $tppa = Get-NewestDll -Root (Join-Path $TppaProjectDir "PolarAlignment\bin\$Configuration") -FileName "NINA.Plugins.PolarAlignment.dll"
+    if ($tppa) {
+        New-Item -ItemType Directory -Path $StagedTppaDllDir -Force | Out-Null
+        Copy-Item -Path $tppa.FullName -Destination (Join-Path $StagedTppaDllDir "NINA.Plugins.PolarAlignment.dll") -Force
+    } else {
+        $stagedTppa = Join-Path $StagedTppaDllDir "NINA.Plugins.PolarAlignment.dll"
+        if (Test-Path $stagedTppa) {
+            Write-Host "WARNING: No Three Point Polar Alignment build output found under $TppaProjectDir\PolarAlignment\bin\$Configuration - the package will carry the STAGED copy." -ForegroundColor Yellow
+            Write-Host "         Build that repository in $Configuration first to refresh it." -ForegroundColor Yellow
+        } else {
+            throw "NINA.Plugins.PolarAlignment.dll not found: build the Three Point Polar Alignment repository in $Configuration first (expected under $TppaProjectDir\PolarAlignment\bin\$Configuration)."
+        }
+    }
+
+    foreach ($item in @(
+        @{ Name = "MLAstroRPA"; Path = (Join-Path $StagedMLastroDllDir "NINA.Plugins.MLAstroRPA.dll") },
+        @{ Name = "Three Point Polar Alignment"; Path = (Join-Path $StagedTppaDllDir "NINA.Plugins.PolarAlignment.dll") })) {
+        if (Test-Path $item.Path) {
+            $info = (Get-Item $item.Path).VersionInfo
+            Write-Host ("  staged {0,-28} {1,-12} {2}  {3}" -f $item.Name, $info.FileVersion, (Get-Item $item.Path).LastWriteTime, $item.Path) -ForegroundColor Green
+        }
+    }
+}
+
 # MSI output filename convention, e.g. MLAstroRPA_Plugin_3.0.0.0.msi
 $msiPrefix = "MLAstroRPA_Plugin"
 $msiNamePattern = 'MLAstroRPA_Plugin_(\d+\.\d+\.\d+(\.\d+)?)\.msi'
@@ -274,11 +325,21 @@ if (-not $ReleaseOnly) {
         Write-Host "WiX Toolset installed!" -ForegroundColor Green
     }
 
-    # ========== BUILD MSI ==========
-    # Building the wixproj builds the referenced plugin (Release) which stages its DLL into
-    # Installer\MSI\Plugin\MLAstroRPA (RefreshInstallerPluginDll target), then compiles
-    # Package.wxs which harvests that staged DLL.
+    # ========== BUILD PLUGIN -> STAGE DLLs -> BUILD MSI ==========
+    # 1) build the plugin so bin\<Configuration> holds the DLL of this build
     Write-Host ""
+    Write-Host "Building the MLAstroRPA plugin ($Configuration)..." -ForegroundColor Yellow
+    dotnet build "$PluginCsproj" -c $Configuration -p:Version=$Version --verbosity minimal -tl:off
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Plugin build failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    # 2) stage both DLLs into Installer\MSI\Plugin (MSI source folder) BEFORE the WiX build
+    Write-Host "Staging the plugin DLLs for the MSI..." -ForegroundColor Yellow
+    Sync-MsiPluginDlls -Configuration $Configuration
+
+    # 3) compile Package.wxs from the freshly staged DLLs
     Write-Host "Building MSI package..." -ForegroundColor Yellow
 
     Push-Location $MSIProjectDir

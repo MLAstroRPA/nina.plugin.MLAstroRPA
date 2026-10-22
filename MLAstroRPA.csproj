@@ -109,19 +109,9 @@
          AssemblyMetadata("FeaturedImageURL") and the in-UI logos are embedded resources. -->
   </Target>
 
-  <!-- Keep the MSI/GitHub-release staging copy of the plugin DLL fresh on EVERY build
-       (Debug included - user request 2026-09-20: a Debug build also copies the DLL to the target folders
-       like a Release build). Building the installer (MLAstroRPA_TPPA.Installer.wixproj) triggers
-       this via the ProjectReference, and Package.wxs harvests the DLL from
-       Installer\MSI\Plugin\MLAstroRPA_TPPA. Note: after a Debug build, build Release again
-       before packaging the MSI/release, otherwise the package carries the Debug DLL. -->
-  <Target Name="RefreshInstallerPluginDll" AfterTargets="PostBuildEvent">
-    <PropertyGroup>
-      <StagedPluginDir>$(ProjectDir)Installer\MSI\Plugin\MLAstroRPA</StagedPluginDir>
-    </PropertyGroup>
-    <MakeDir Directories="$(StagedPluginDir)" Condition="!Exists('$(StagedPluginDir)')" />
-    <Copy SourceFiles="$(TargetDir)NINA.Plugins.MLAstroRPA.dll" DestinationFolder="$(StagedPluginDir)" />
-    <Message Importance="High" Text="[MLAstroRPA] Plugin DLL copied to MSI staging: $(StagedPluginDir)" />
-  </Target>
+  <!-- The MSI staging copy is NOT done here any more (user request 2026-10-22). Release-MSI.ps1
+       builds the plugin, copies the MLAstroRPA DLL and the Three Point Polar Alignment DLL into
+       Installer\MSI\Plugin\<plugin> and only then compiles Package.wxs, so the package can never
+       carry a stale or Debug DLL. -->
 
 </Project>

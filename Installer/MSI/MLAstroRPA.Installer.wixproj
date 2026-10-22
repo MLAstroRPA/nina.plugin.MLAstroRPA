@@ -10,9 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Building the installer builds the MLAstroRPA plugin and stages its DLL
-         (see RefreshInstallerPluginDll in MLAstroRPA.csproj) into Installer\MSI\Plugin\MLAstroRPA
-         which Package.wxs harvests. -->
+    <!-- Building the installer builds the MLAstroRPA plugin; Release-MSI.ps1 stages the MLAstroRPA
+         and the Three Point Polar Alignment DLLs into Installer\MSI\Plugin\<plugin> right before this
+         build, and Package.wxs harvests them from there. -->
     <ProjectReference Include="..\..\MLAstroRPA.csproj" />
   </ItemGroup>
 
