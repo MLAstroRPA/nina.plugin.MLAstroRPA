@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 3.3.1.0 — 2026-11-03
+
+- Changed — the installer ships `NINA.Plugins.PolarAlignment.dll` 2.2.8.1: the imaging-tab tool now follows the plugin defaults (alignment tolerance, move rate, target distance, search radius, east direction) as soon as they are edited in the options instead of only after a restart, and the default plate-solve search radius is 30 degrees, the minimum the setting accepts
+- Changed — the MSI build stages both plugin DLLs itself right before the WiX build, so the package can no longer carry a stale or Debug copy; the `RefreshInstallerPluginDll` target is gone from `MLAstroRPA.csproj`
+
 ## 3.3.0.0 — 2026-10-14
 
 - Fixed — the serial terminal of the CONNECTION tab attaches its subscriptions as soon as NINA hands the options page its view-model: a page that is loaded before that no longer leaves the terminal empty for the whole session while the link is connected and the handshake is OK
